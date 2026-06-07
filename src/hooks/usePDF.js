@@ -16,10 +16,12 @@ export function usePDF() {
     setError(null);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      // pdf.js transferuje buffer do workera – robimy kopię do zapisu
+      const bufferForPDF = arrayBuffer.slice(0);
+      const doc = await pdfjsLib.getDocument({ data: bufferForPDF }).promise;
       setPdfDoc(doc);
       setTotalPages(doc.numPages);
-      return { doc, arrayBuffer };
+      return { doc, arrayBuffer }; // oryginał do IndexedDB/dysku
     } catch (err) {
       setError('Nie udało się wczytać PDF: ' + err.message);
       return null;

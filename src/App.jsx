@@ -110,21 +110,27 @@ export default function App() {
     const clampedEnd = end ? Math.min(end, total) : null;
     const resolvedTitle = title || file.name.replace(/\.pdf$/i, '');
 
-    const id = await saveBook({
-      title: resolvedTitle, language,
-      startPage: clampedStart, endPage: clampedEnd,
-      currentPage: clampedStart, totalPages: total,
-      pdfData: arrayBuffer,
-    });
-    setCurrentBookId(id);
-    setBooks(prev => [{
-      id, title: resolvedTitle, language,
-      startPage: clampedStart, endPage: clampedEnd,
-      currentPage: clampedStart, totalPages: total,
-    }, ...prev]);
+    // Zapis do IndexedDB – opcjonalny, nie blokuje czytania
+    let id = null;
+    try {
+      id = await saveBook({
+        title: resolvedTitle, language,
+        startPage: clampedStart, endPage: clampedEnd,
+        currentPage: clampedStart, totalPages: total,
+        pdfData: arrayBuffer,
+      });
+      setCurrentBookId(id);
+      setBooks(prev => [{
+        id, title: resolvedTitle, language,
+        startPage: clampedStart, endPage: clampedEnd,
+        currentPage: clampedStart, totalPages: total,
+      }, ...prev]);
+    } catch (e) {
+      console.warn('Nie udało się zapisać do biblioteki:', e.message);
+    }
 
-    const base = makeBookBase(resolvedTitle, id);
-    syncToDisk(safeFilename(resolvedTitle, id), arrayBuffer);
+    const base = id ? makeBookBase(resolvedTitle, id) : null;
+    if (id) syncToDisk(safeFilename(resolvedTitle, id), arrayBuffer);
     await startReading(doc, resolvedTitle, language, clampedStart, clampedEnd, base);
 
     // Jeśli podano zakres → batch tłumaczenie od razu
