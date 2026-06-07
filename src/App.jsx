@@ -172,9 +172,15 @@ export default function App() {
       if (Object.keys(imgs).length) setPageImages(imgs);
     } catch {}
 
-    await startReading(doc, book.title, book.language, book.startPage || 1, book.endPage, base);
-    setCurrentPage(book.currentPage || book.startPage || 1);
-  }, [books, loadPDFFromBuffer, sampleTexts, batch]);
+    const bookStart = book.startPage || 1;
+    const bookEnd = book.endPage || doc.numPages;
+
+    await startReading(doc, book.title, book.language, bookStart, book.endPage, base);
+    setCurrentPage(book.currentPage || bookStart);
+
+    // Uruchom batch dla stron które nie mają jeszcze tłumaczenia
+    batch.start(doc, bookStart, bookEnd, book.language, getPageText);
+  }, [books, loadPDFFromBuffer, sampleTexts, batch, getPageText]);
 
   const handleDeleteBook = useCallback(async (bookId) => {
     await deleteBook(bookId);
@@ -244,32 +250,35 @@ export default function App() {
             pageImages={pageImages}
           />
 
-          {!batch.running && !batch.done && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 32px 0' }}>
-              <button
-                className="btn-nav"
-                onClick={() => setPhase('home')}
-                style={{ minWidth: 'auto', padding: '6px 16px', fontSize: '0.78rem' }}
-              >
-                ← Biblioteka
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 32px 0', flexWrap: 'wrap', gap: '8px' }}>
+            <button
+              className="btn-nav"
+              onClick={() => setPhase('home')}
+              style={{ minWidth: 'auto', padding: '6px 16px', fontSize: '0.78rem' }}
+            >
+              ← Biblioteka
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {!batch.running && (
+                <button
+                  className="btn-nav"
+                  style={{ minWidth: 'auto', padding: '6px 16px', fontSize: '0.78rem', borderColor: 'var(--accent-dim)', color: 'var(--accent)' }}
+                  onClick={() => {
+                    if (pdfDocRef.current && getPageTextRef.current) {
+                      batch.reset();
+                      batch.start(pdfDocRef.current, startPage, endPage || totalPages, language, getPageTextRef.current);
+                    }
+                  }}
+                >
+                  ↻ Przetłumacz wszystko
+                </button>
+              )}
               {syncStatus === 'saving' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Zapisuję…</span>}
-              {syncStatus === 'ok'     && <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>✓ Zapisano na dysk</span>}
+              {syncStatus === 'ok'     && <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>✓ Dysk</span>}
               {syncStatus === 'error'  && <span style={{ fontSize: '0.75rem', color: '#e07080' }}>⚠ Błąd zapisu</span>}
             </div>
-          )}
-
-          {batch.running && (
-            <div style={{ padding: '4px 32px 0', display: 'flex', justifyContent: 'flex-start' }}>
-              <button
-                className="btn-nav"
-                onClick={() => setPhase('home')}
-                style={{ minWidth: 'auto', padding: '6px 16px', fontSize: '0.78rem' }}
-              >
-                ← Biblioteka
-              </button>
-            </div>
-          )}
+          </div>
 
           <PageReader
             pdfDoc={pdfDoc}

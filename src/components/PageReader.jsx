@@ -11,7 +11,7 @@ export default function PageReader({
 }) {
   const [pageText, setPageText] = useState('');
   const [textLoading, setTextLoading] = useState(false);
-  const { getAnalysis, getCached, loading: analysisLoading, error } = usePageAnalysis(bookBase);
+  const { getAnalysis, getCached, ensureImagePrompt, loading: analysisLoading, error } = usePageAnalysis(bookBase);
 
   const analysis = getCached(currentPage, language);
   const lastPage = endPage || totalPages;
@@ -23,8 +23,16 @@ export default function PageReader({
     getPageText(pdfDoc, currentPage).then(text => {
       setPageText(text);
       setTextLoading(false);
-      if (text.trim() && !getCached(currentPage, language)) {
-        getAnalysis(text, language, currentPage);
+
+      const cached = getCached(currentPage, language);
+      if (text.trim()) {
+        if (!cached) {
+          // Brak analizy → pełna analiza (zawiera image_prompt)
+          getAnalysis(text, language, currentPage);
+        } else if (!cached.image_prompt) {
+          // Jest analiza ale bez promptu → dogeneruj tylko prompt
+          ensureImagePrompt(text, language, currentPage);
+        }
       }
     });
   }, [pdfDoc, currentPage, language]);

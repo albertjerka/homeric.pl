@@ -9,8 +9,8 @@ export async function analyzePage(text, language, pageNumber) {
   const langName = language === 'ru' ? 'rosyjskim' : 'angielskim';
 
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 7000,
     system: 'Jesteś ekspertem w nauczaniu języków obcych dla polskich uczniów. Analizujesz strony literackie i tworzysz materiały edukacyjne. Odpowiadasz wyłącznie w formacie JSON.',
     messages: [{
       role: 'user',
@@ -56,6 +56,20 @@ ${text}`
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('Nieprawidłowa odpowiedź od Claude');
   return JSON.parse(jsonMatch[0]);
+}
+
+export async function generateImagePrompt(text, language, pageNumber) {
+  const langName = language === 'ru' ? 'rosyjskim' : 'angielskim';
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 300,
+    system: 'You write ultra-realistic cinematic photography prompts in English. Respond with the prompt text only — no JSON, no explanation.',
+    messages: [{
+      role: 'user',
+      content: `Write a cinematic photography prompt (80-100 words) for the most dramatic scene from this ${langName} literary text (page ${pageNumber}). Style: shot on 35mm film, shallow depth of field, dramatic natural lighting, ancient historical setting, hyper-detailed faces and expressions, photorealistic textures, dust particles in air. Describe specific characters, their emotions, gestures, clothing.\n\nTEXT:\n${text.slice(0, 1200)}`
+    }]
+  });
+  return message.content[0].text.trim();
 }
 
 export async function countWords(texts, language) {
