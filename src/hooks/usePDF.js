@@ -51,7 +51,40 @@ export function usePDF() {
     try {
       const page = await doc.getPage(pageNum);
       const content = await page.getTextContent();
-      return content.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+      const items = content.items.filter(it => it.str != null);
+      if (!items.length) return '';
+
+      let text = '';
+      for (let i = 0; i < items.length; i++) {
+        const cur = items[i];
+        text += cur.str;
+
+        const nxt = items[i + 1];
+        if (!nxt) continue;
+
+        const curY   = cur.transform[5];
+        const nxtY   = nxt.transform[5];
+        const sameLine = Math.abs(curY - nxtY) < 3;
+
+        if (!sameLine || cur.hasEOL) {
+          // Nowa linia
+          text += ' ';
+          continue;
+        }
+
+        // Sprawdź czy między elementami jest odstęp (spacja)
+        const curRight = cur.transform[4] + (cur.width || 0);
+        const nxtLeft  = nxt.transform[4];
+        const gap      = nxtLeft - curRight;
+        const charW    = cur.str.length > 0 ? (cur.width || 0) / cur.str.length : 4;
+
+        // Jeśli odstęp > 30% szerokości znaku → spacja, inaczej sklejamy
+        if (gap > charW * 0.3) {
+          text += ' ';
+        }
+      }
+
+      return text.replace(/\s+/g, ' ').trim();
     } catch { return ''; }
   }, []);
 

@@ -13,13 +13,23 @@ export default function PageView({ pageText, analysis, loading, error, pageImage
     e.target.value = '';
   }
 
-  // Mapa: słowo → tłumaczenie (z vocabulary)
+  // vocabMap: 8-12 kluczowych słów → tłumaczenie (żółte)
   const vocabMap = {};
   analysis?.vocabulary?.forEach(v => {
     if (v.word) vocabMap[v.word.toLowerCase()] = v.translation || '';
   });
 
-  // Mapa: słowo → tłumaczenie zdania (dla białych słów)
+  // allWordsMap: wszystkie słowa z word_translations → tłumaczenie (białe)
+  const allWordsMap = {};
+  if (analysis?.word_translations) {
+    Object.entries(analysis.word_translations).forEach(([w, t]) => {
+      allWordsMap[w.toLowerCase()] = t;
+    });
+  }
+  // vocab nadpisuje allWords (lepszy kontekst)
+  const fullMap = { ...allWordsMap, ...vocabMap };
+
+  // Fallback dla białych: sentenceMap (stare cache bez word_translations)
   const sentenceMap = {};
   analysis?.sentences?.forEach(s => {
     const words = s.original.match(/[\wа-яёА-ЯЁ'-]+/gi) || [];
@@ -64,7 +74,7 @@ export default function PageView({ pageText, analysis, loading, error, pageImage
             {activeTab === 1 && (
               <div className="text-block original">
                 {(analysis?.vocabulary?.length > 0 || analysis?.sentences?.length > 0)
-                  ? renderFlowingText(pageText, vocabMap, sentenceMap)
+                  ? renderFlowingText(pageText, vocabMap, fullMap, sentenceMap)
                   : pageText || <span style={{ color: 'var(--text-muted)' }}>Brak tekstu.</span>
                 }
               </div>
@@ -80,7 +90,7 @@ export default function PageView({ pageText, analysis, loading, error, pageImage
                       <div key={i} className={`sentence-pair${isPlaying ? ' playing' : ''}`}>
                         <div className="sentence-original-row">
                           <div className="sentence-original">
-                            {renderSentenceWords(s.original, s.key_words, vocabMap, s.polish)}
+                            {renderSentenceWords(s.original, s.key_words, vocabMap, fullMap, sentenceMap, s.polish)}
                           </div>
                           <button
                             className={`btn-speak${isPlaying ? ' active' : ''}`}
@@ -209,43 +219,33 @@ function ImagePromptSection({ prompt }) {
   );
 }
 
-// ── Oryginał: każde słowo jako span, żółte = vocab, białe = kontekst zdania ──
-function renderFlowingText(text, vocabMap, sentenceMap) {
+// ── Oryginał: każde słowo jako span ──
+function renderFlowingText(text, vocabMap, fullMap, sentenceMap) {
   if (!text) return null;
-
-  // Tokenizuj: słowa + białe znaki + interpunkcja
   const tokens = text.split(/([\s\n]+|[.,!?;:«»„"()[\]{}/\\—–-]+)/);
 
   return tokens.map((token, i) => {
     const clean = token.replace(/[^а-яёa-zA-ZА-ЯЁ'-]/gi, '').toLowerCase();
-    if (!clean) return token; // spacja, interpunkcja → bez zmian
+    if (!clean) return token;
 
-    const vocabTranslation = vocabMap[clean];
-    if (vocabTranslation) {
-      // Żółte – słowo ze słowniczka
-      return (
-        <span key={i} className="vocab-highlight" data-translation={vocabTranslation}>
-          {token}
-        </span>
-      );
+    // Żółte = kluczowe słówka ze słowniczka
+    const vocabTr = vocabMap[clean] || findByPrefix(clean, vocabMap);
+    if (vocabTr) {
+      return <span key={i} className="vocab-highlight" data-translation={vocabTr}>{token}</span>;
     }
 
-    const sentenceTranslation = sentenceMap[clean];
-    if (sentenceTranslation) {
-      // Białe – słowo z przetłumaczonego zdania
-      return (
-        <span key={i} className="word-hint" data-translation={sentenceTranslation}>
-          {token}
-        </span>
-      );
+    // Białe = pozostałe słowa z word_translations (bez fallbacku na zdanie)
+    const whiteTr = fullMap[clean] || findByPrefix(clean, fullMap);
+    if (whiteTr) {
+      return <span key={i} className="word-hint" data-translation={whiteTr}>{token}</span>;
     }
 
     return token;
   });
 }
 
-// ── Zdanie po zdaniu: żółte = vocab z tooltipem, białe = tłumaczenie zdania ──
-function renderSentenceWords(text, keyWords, vocabMap, sentencePolish) {
+// ── Zdanie po zdaniu: każde słowo ma swój własny tooltip ──
+function renderSentenceWords(text, keyWords, vocabMap, fullMap, sentenceMap, sentencePolish) {
   if (!text) return null;
 
   const keySet = new Set((keyWords || []).map(w => w.toLowerCase()));
@@ -256,19 +256,31 @@ function renderSentenceWords(text, keyWords, vocabMap, sentencePolish) {
     if (!clean) return token;
 
     if (keySet.has(clean)) {
-      const translation = vocabMap[clean] || '';
+      // Żółte – tłumaczenie ze słowniczka (własne słowo, nie zdanie)
+      const tr = vocabMap[clean] || findByPrefix(clean, vocabMap)
+              || fullMap[clean]  || findByPrefix(clean, fullMap);
       return (
-        <span key={i} className="vocab-highlight" data-translation={translation || token}>
+        <span key={i} className="vocab-highlight" data-translation={tr || '—'}>
           {token}
         </span>
       );
     }
 
-    // Białe słowo – tooltip = tłumaczenie całego zdania
-    return (
-      <span key={i} className="word-hint" data-translation={sentencePolish}>
-        {token}
-      </span>
-    );
+    // Białe – tłumaczenie indywidualne słowa (tylko z word_translations, nie całe zdanie)
+    const tr = fullMap[clean] || findByPrefix(clean, fullMap);
+    if (tr) {
+      return <span key={i} className="word-hint" data-translation={tr}>{token}</span>;
+    }
+
+    return token;
   });
+}
+
+function findByPrefix(word, map) {
+  if (!word || word.length < 4) return '';
+  const stem = word.slice(0, Math.max(4, word.length - 2));
+  for (const [k, v] of Object.entries(map)) {
+    if (k !== word && (k.startsWith(stem) || word.startsWith(k.slice(0, -1)))) return v;
+  }
+  return '';
 }

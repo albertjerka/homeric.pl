@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { jsonrepair } from 'jsonrepair';
 
 const client = new Anthropic({
   apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
@@ -10,7 +11,7 @@ export async function analyzePage(text, language, pageNumber) {
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 7000,
+    max_tokens: 8192,
     system: 'Jesteś ekspertem w nauczaniu języków obcych dla polskich uczniów. Analizujesz strony literackie i tworzysz materiały edukacyjne. Odpowiadasz wyłącznie w formacie JSON.',
     messages: [{
       role: 'user',
@@ -37,15 +38,19 @@ Odpowiedz WYŁĄCZNIE w formacie JSON (bez żadnego tekstu przed ani po JSON):
     "summary": "2-3 zdania co się dzieje na tej stronie fabularnie",
     "notes": ["wyjaśnienie odniesienia kulturowego lub archaizmu"]
   },
+  "word_translations": {
+    "słowo_w_oryginale": "polskie_tłumaczenie"
+  },
   "image_prompt": "ultra-realistic cinematic photography prompt in English"
 }
 
 Zasady:
-- vocabulary: wybierz 8-12 najważniejszych słów do nauki
+- vocabulary: wybierz 8-12 NAJWAŻNIEJSZYCH słów do nauki (te które uczeń powinien zapamiętać)
 - key_words w sentences: oznacz słowa kluczowe z vocabulary
 - notes w context: wyjaśnij nazwy bogów, miejsc, archaizmy, trudne wyrazy
 - polish_translation ma być eleganckie i literackie
-- image_prompt: opisz po ANGIELSKU najbardziej dramatyczną, wizualnie porażającą scenę z tej strony. Prompt musi być ultra-realistyczny i filmowy – jakby ktoś kręcił film i fotograf zrobił zdjęcie na planie. Opisz konkretnych ludzi z tej sceny: ich twarze, emocje, gesty, ubrania, fryzury. Styl obowiązkowo: "cinematic photography, shot on 35mm film, shallow depth of field, dramatic natural lighting, dust particles in the air, photorealistic textures, hyper-detailed faces and expressions, ancient Mesopotamian historical setting with accurate period details". Unikaj ogólników – pisz o konkretnych postaciach i konkretnym momencie akcji. Prompt powinien mieć 80-120 słów.
+- word_translations: słownik WSZYSTKICH znaczących słów z tej strony (40-80 słów). Dla każdego słowa podaj jego podstawową formę (mianownik/bezokolicznik) i polskie tłumaczenie. Pomiń tylko oczywiste przyimki i spójniki (и, в, на, с, но, а, то, же). Uwzględnij czasowniki, rzeczowniki, przymiotniki, przysłówki, imiona własne.
+- image_prompt: opisz po ANGIELSKU najbardziej dramatyczną scenę z tej strony, ultra-realistycznie, filmowo. Styl: "cinematic photography, shot on 35mm film, shallow depth of field, dramatic natural lighting, dust particles in the air, photorealistic textures, hyper-detailed faces, ancient Mesopotamian historical setting". 80-100 słów.
 
 TEKST:
 ${text}`
@@ -54,8 +59,13 @@ ${text}`
 
   const raw = message.content[0].text;
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Nieprawidłowa odpowiedź od Claude');
-  return JSON.parse(jsonMatch[0]);
+  if (!jsonMatch) throw new Error('Brak JSON w odpowiedzi Claude');
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    // Obcięty lub uszkodzony JSON – próba naprawy
+    return JSON.parse(jsonrepair(jsonMatch[0]));
+  }
 }
 
 export async function generateImagePrompt(text, language, pageNumber) {

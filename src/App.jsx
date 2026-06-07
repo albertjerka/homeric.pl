@@ -133,9 +133,9 @@ export default function App() {
     if (id) syncToDisk(safeFilename(resolvedTitle, id), arrayBuffer);
     await startReading(doc, resolvedTitle, language, clampedStart, clampedEnd, base);
 
-    // Jeśli podano zakres → batch tłumaczenie od razu
+    // Jeśli podano zakres → batch tłumaczenie od razu (z zapisem na dysk)
     if (clampedEnd) {
-      batch.start(doc, clampedStart, clampedEnd, language, getPageText);
+      batch.start(doc, clampedStart, clampedEnd, language, getPageText, base);
     }
   }, [loadPDF, language, sampleTexts, getPageText, batch]);
 
@@ -178,8 +178,8 @@ export default function App() {
     await startReading(doc, book.title, book.language, bookStart, book.endPage, base);
     setCurrentPage(book.currentPage || bookStart);
 
-    // Uruchom batch dla stron które nie mają jeszcze tłumaczenia
-    batch.start(doc, bookStart, bookEnd, book.language, getPageText);
+    // Uruchom batch dla stron które nie mają jeszcze tłumaczenia (z zapisem na dysk)
+    batch.start(doc, bookStart, bookEnd, book.language, getPageText, base);
   }, [books, loadPDFFromBuffer, sampleTexts, batch, getPageText]);
 
   const handleDeleteBook = useCallback(async (bookId) => {
@@ -244,6 +244,7 @@ export default function App() {
             current={batch.current}
             total={batch.total}
             errors={batch.errors}
+            errorList={batch.errorList}
             onCancel={batch.cancel}
             language={language}
             bookTitle={bookTitle}
@@ -267,7 +268,7 @@ export default function App() {
                   onClick={() => {
                     if (pdfDocRef.current && getPageTextRef.current) {
                       batch.reset();
-                      batch.start(pdfDocRef.current, startPage, endPage || totalPages, language, getPageTextRef.current);
+                      batch.start(pdfDocRef.current, startPage, endPage || totalPages, language, getPageTextRef.current, currentBookBase);
                     }
                   }}
                 >
