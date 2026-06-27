@@ -99,7 +99,8 @@ export default function App() {
     finally { setWordCountLoading(false); }
   }
 
-  const handleLoad = useCallback(async (file, start, end, title) => {
+  const handleLoad = useCallback(async (file, start, end, title, lang) => {
+    const usedLang = lang || language;
     batch.reset();
     const result = await loadPDF(file);
     if (!result) return;
@@ -114,14 +115,14 @@ export default function App() {
     let id = null;
     try {
       id = await saveBook({
-        title: resolvedTitle, language,
+        title: resolvedTitle, language: usedLang,
         startPage: clampedStart, endPage: clampedEnd,
         currentPage: clampedStart, totalPages: total,
         pdfData: arrayBuffer,
       });
       setCurrentBookId(id);
       setBooks(prev => [{
-        id, title: resolvedTitle, language,
+        id, title: resolvedTitle, language: usedLang,
         startPage: clampedStart, endPage: clampedEnd,
         currentPage: clampedStart, totalPages: total,
       }, ...prev]);
@@ -131,11 +132,11 @@ export default function App() {
 
     const base = id ? makeBookBase(resolvedTitle, id) : null;
     if (id) syncToDisk(safeFilename(resolvedTitle, id), arrayBuffer);
-    await startReading(doc, resolvedTitle, language, clampedStart, clampedEnd, base);
+    await startReading(doc, resolvedTitle, usedLang, clampedStart, clampedEnd, base);
 
     // Jeśli podano zakres → batch tłumaczenie od razu (z zapisem na dysk)
     if (clampedEnd) {
-      batch.start(doc, clampedStart, clampedEnd, language, getPageText, base);
+      batch.start(doc, clampedStart, clampedEnd, usedLang, getPageText, base);
     }
   }, [loadPDF, language, sampleTexts, getPageText, batch]);
 

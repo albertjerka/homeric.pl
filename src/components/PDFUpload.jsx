@@ -6,6 +6,7 @@ export default function PDFUpload({ onLoad, language }) {
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [selectedLang, setSelectedLang] = useState(language);
   const inputRef = useRef();
 
   function handleFile(f) {
@@ -25,7 +26,7 @@ export default function PDFUpload({ onLoad, language }) {
   function handleStart() {
     const start = Math.max(1, parseInt(startPage) || 1);
     const end = endPage ? Math.max(start, parseInt(endPage) || start) : null;
-    onLoad(file, start, end, title);
+    onLoad(file, start, end, title, selectedLang);
   }
 
   return (
@@ -74,9 +75,11 @@ export default function PDFUpload({ onLoad, language }) {
 
           <div className="config-row">
             <span className="config-label">Język źródłowy</span>
-            <span style={{ color: 'var(--accent)', fontFamily: 'Cinzel, serif', fontSize: '0.9rem' }}>
-              {language === 'ru' ? 'Rosyjski' : language === 'uk' ? 'Ukraiński' : 'Angielski'}
-            </span>
+            <div className="lang-switch">
+              <button className={selectedLang === 'ru' ? 'active' : ''} onClick={() => setSelectedLang('ru')}>RU</button>
+              <button className={selectedLang === 'uk' ? 'active' : ''} onClick={() => setSelectedLang('uk')}>UA</button>
+              <button className={selectedLang === 'en' ? 'active' : ''} onClick={() => setSelectedLang('en')}>EN</button>
+            </div>
           </div>
 
           <div className="config-row">
