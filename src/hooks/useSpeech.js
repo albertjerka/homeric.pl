@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 const VOICE_PREFS = {
   ru: ['Yuri', 'Milena', 'ru-RU', 'ru'],
   en: ['Daniel', 'Samantha', 'en-US', 'en'],
+  uk: ['uk-UA', 'uk'],
 };
 
 function pickVoice(language) {
@@ -20,7 +21,7 @@ export function useSpeech(language) {
   const [currentText, setCurrentText] = useState(null);
   const activeKey = useRef(null);
 
-  const lang = language === 'ru' ? 'ru-RU' : 'en-US';
+  const lang = language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US';
 
   // Głosy ładują się asynchronicznie – czekamy na zdarzenie
   useEffect(() => {

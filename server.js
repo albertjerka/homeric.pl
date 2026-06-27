@@ -17,7 +17,7 @@ app.post('/api/analyze-page', async (req, res) => {
   const { text, language, pageNumber } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'Brak tekstu' });
 
-  const langName = language === 'ru' ? 'rosyjskim' : 'angielskim';
+  const langName = language === 'ru' ? 'rosyjskim' : language === 'uk' ? 'ukraińskim' : 'angielskim';
 
   const userPrompt = `Przeanalizuj następujący tekst literacki (strona ${pageNumber}) w języku ${langName}.
 Odpowiedz WYŁĄCZNIE w formacie JSON (bez żadnego tekstu przed ani po JSON):
@@ -55,7 +55,7 @@ ${text}`;
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: 'Jesteś ekspertem w nauczaniu języków obcych dla polskich uczniów. Analizujesz strony literackie i tworzysz materiały edukacyjne. Odpowiadasz wyłącznie w formacie JSON.',
       messages: [{ role: 'user', content: userPrompt }]
@@ -79,6 +79,8 @@ app.post('/api/count-words', (req, res) => {
   const joined = texts.join(' ').toLowerCase();
   const wordPattern = language === 'ru'
     ? /[а-яёa-z'-]{2,}/g
+    : language === 'uk'
+    ? /[а-яіїєґa-z'-]{2,}/g
     : /[a-z'-]{2,}/g;
 
   const words = joined.match(wordPattern) || [];

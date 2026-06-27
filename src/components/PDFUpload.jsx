@@ -75,7 +75,7 @@ export default function PDFUpload({ onLoad, language }) {
           <div className="config-row">
             <span className="config-label">Język źródłowy</span>
             <span style={{ color: 'var(--accent)', fontFamily: 'Cinzel, serif', fontSize: '0.9rem' }}>
-              {language === 'ru' ? 'Rosyjski' : 'Angielski'}
+              {language === 'ru' ? 'Rosyjski' : language === 'uk' ? 'Ukraiński' : 'Angielski'}
             </span>
           </div>
 

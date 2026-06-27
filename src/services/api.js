@@ -7,7 +7,7 @@ const client = new Anthropic({
 });
 
 export async function analyzePage(text, language, pageNumber) {
-  const langName = language === 'ru' ? 'rosyjskim' : 'angielskim';
+  const langName = language === 'ru' ? 'rosyjskim' : language === 'uk' ? 'ukraińskim' : 'angielskim';
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -69,7 +69,7 @@ ${text}`
 }
 
 export async function generateImagePrompt(text, language, pageNumber) {
-  const langName = language === 'ru' ? 'rosyjskim' : 'angielskim';
+  const langName = language === 'ru' ? 'rosyjskim' : language === 'uk' ? 'ukraińskim' : 'angielskim';
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 300,
@@ -84,7 +84,7 @@ export async function generateImagePrompt(text, language, pageNumber) {
 
 export async function countWords(texts, language) {
   const joined = texts.join(' ').toLowerCase();
-  const wordPattern = language === 'ru' ? /[а-яёa-z'-]{2,}/g : /[a-z'-]{2,}/g;
+  const wordPattern = language === 'ru' ? /[а-яёa-z'-]{2,}/g : language === 'uk' ? /[а-яіїєґa-z'-]{2,}/g : /[a-z'-]{2,}/g;
   const words = joined.match(wordPattern) || [];
   return { count: new Set(words).size };
 }

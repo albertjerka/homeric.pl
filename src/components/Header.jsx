@@ -48,6 +48,12 @@ export default function Header({ language, onLanguageChange, headerImage, onHead
             RU
           </button>
           <button
+            className={language === 'uk' ? 'active' : ''}
+            onClick={() => onLanguageChange('uk')}
+          >
+            UA
+          </button>
+          <button
             className={language === 'en' ? 'active' : ''}
             onClick={() => onLanguageChange('en')}
           >
