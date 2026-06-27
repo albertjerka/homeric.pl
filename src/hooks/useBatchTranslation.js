@@ -1,17 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { analyzePage } from '../services/api.js';
-import { savePageCacheToDisk } from '../services/fileSystem.js';
-
-const cacheKey = (page, lang) => `uanna_page_${page}_${lang}`;
-
-function hasValidCache(page, language) {
-  try {
-    const s = localStorage.getItem(cacheKey(page, language));
-    if (!s) return false;
-    const d = JSON.parse(s);
-    return !!(d && d.polish_translation);
-  } catch { return false; }
-}
+import { getAllPages, savePage } from '../services/dbApi.js';
 
 export function useBatchTranslation() {
   const [running, setRunning] = useState(false);
@@ -21,7 +10,7 @@ export function useBatchTranslation() {
   const [errorList, setErrorList] = useState([]);
   const abortRef = useRef(false);
 
-  const start = useCallback(async (pdfDoc, startPage, endPage, language, getPageText, bookBase) => {
+  const start = useCallback(async (pdfDoc, startPage, endPage, language, getPageText, bookId) => {
     const pages = endPage - startPage + 1;
     setTotal(pages);
     setCurrent(0);
@@ -30,10 +19,21 @@ export function useBatchTranslation() {
     setRunning(true);
     abortRef.current = false;
 
+    // Preładuj numery stron już przetłumaczonych
+    const cached = new Set();
+    if (bookId) {
+      try {
+        const all = await getAllPages(bookId, language);
+        Object.keys(all).forEach(p => {
+          if (all[p]?.polish_translation) cached.add(Number(p));
+        });
+      } catch {}
+    }
+
     for (let page = startPage; page <= endPage; page++) {
       if (abortRef.current) break;
 
-      if (hasValidCache(page, language)) {
+      if (cached.has(page)) {
         setCurrent(prev => prev + 1);
         continue;
       }
@@ -42,9 +42,7 @@ export function useBatchTranslation() {
         const text = await getPageText(pdfDoc, page);
         if (text.trim()) {
           const result = await analyzePage(text, language, page);
-          localStorage.setItem(cacheKey(page, language), JSON.stringify(result));
-          // Zapisz też na dysk – żeby przeżyło wyczyszczenie localStorage
-          if (bookBase) savePageCacheToDisk(bookBase, page, language, result).catch(() => {});
+          if (bookId) savePage(bookId, page, language, result).catch(() => {});
         }
       } catch (e) {
         setErrorList(prev => [...prev, `s.${page}: ${e.message?.slice(0, 60) || 'błąd API'}`]);

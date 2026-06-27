@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Header from './components/Header.jsx';
 import Library from './components/Library.jsx';
-import StorageBar from './components/StorageBar.jsx';
 import PDFUpload from './components/PDFUpload.jsx';
 import WordStats from './components/WordStats.jsx';
 import PageReader from './components/PageReader.jsx';
@@ -10,20 +9,10 @@ import BatchProgress from './components/BatchProgress.jsx';
 import { usePDF } from './hooks/usePDF.js';
 import { useBatchTranslation } from './hooks/useBatchTranslation.js';
 import { countWords } from './services/api.js';
-import { saveBook, getAllBooks, getBookPDF, updateBook, deleteBook } from './services/library.js';
 import {
-  getFolder, saveFileToDisk, loadFileFromDisk,
-  saveImagesToDisk, loadImagesFromDisk,
-  safeFilename, bookBase as makeBookBase,
-} from './services/fileSystem.js';
-
-function fileToDataURL(file) {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.readAsDataURL(file);
-  });
-}
+  getAllBooks, saveBook, uploadPDF, getBookPDF,
+  updateBook, deleteBook, getImages, saveImages,
+} from './services/dbApi.js';
 
 export default function App() {
   const [phase, setPhase] = useState('home');
@@ -39,10 +28,7 @@ export default function App() {
   const [pageImages, setPageImages] = useState({});
   const [books, setBooks] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
-  const [syncStatus, setSyncStatus] = useState('');
-  const [currentBookBase, setCurrentBookBase] = useState(null);
 
-  // Referencje do stanu dla batcha (unikamy closure stale values)
   const pdfDocRef = useRef(null);
   const getPageTextRef = useRef(null);
 
@@ -52,43 +38,32 @@ export default function App() {
   useEffect(() => { pdfDocRef.current = pdfDoc; }, [pdfDoc]);
   useEffect(() => { getPageTextRef.current = getPageText; }, [getPageText]);
 
-  // Zapisuj obrazki na dysk przy każdej zmianie
-  useEffect(() => {
-    if (!currentBookBase || !Object.keys(pageImages).length) return;
-    saveImagesToDisk(currentBookBase, pageImages).catch(() => {});
-  }, [pageImages, currentBookBase]);
-
   useEffect(() => {
     getAllBooks().then(b => { setBooks(b); setLoadingLibrary(false); }).catch(() => setLoadingLibrary(false));
   }, []);
 
   useEffect(() => {
     if (currentBookId && currentPage) {
-      updateBook(currentBookId, { currentPage }).catch(() => {});
-      setBooks(prev => prev.map(b => b.id === currentBookId ? { ...b, currentPage } : b));
+      updateBook(currentBookId, { current_page: currentPage }).catch(() => {});
+      setBooks(prev => prev.map(b => b.id === currentBookId ? { ...b, current_page: currentPage } : b));
     }
   }, [currentPage, currentBookId]);
 
-  async function syncToDisk(filename, arrayBuffer) {
-    const folderHandle = await getFolder().catch(() => null);
-    if (!folderHandle) return;
-    setSyncStatus('saving');
-    try {
-      await saveFileToDisk(filename, arrayBuffer);
-      setSyncStatus('ok');
-    } catch (e) {
-      setSyncStatus('error');
-      console.warn('Błąd zapisu na dysk:', e.message);
-    }
-  }
+  // Zapisuj obrazki do bazy przy każdej zmianie
+  useEffect(() => {
+    if (!currentBookId || !Object.keys(pageImages).length) return;
+    Object.entries(pageImages).forEach(([page, imgs]) => {
+      saveImages(currentBookId, page, imgs).catch(() => {});
+    });
+  }, [pageImages, currentBookId]);
 
-  async function startReading(doc, title, lang, start, end, base) {
+  async function startReading(doc, title, lang, start, end, bookId) {
     setBookTitle(title);
     setLanguage(lang);
     setStartPage(start);
     setEndPage(end);
     setCurrentPage(start);
-    setCurrentBookBase(base || null);
+    setCurrentBookId(bookId);
     setPhase('reading');
     setWordCountLoading(true);
     try {
@@ -111,32 +86,27 @@ export default function App() {
     const clampedEnd = end ? Math.min(end, total) : null;
     const resolvedTitle = title || file.name.replace(/\.pdf$/i, '');
 
-    // Zapis do IndexedDB – opcjonalny, nie blokuje czytania
     let id = null;
     try {
       id = await saveBook({
         title: resolvedTitle, language: usedLang,
         startPage: clampedStart, endPage: clampedEnd,
         currentPage: clampedStart, totalPages: total,
-        pdfData: arrayBuffer,
       });
-      setCurrentBookId(id);
+      await uploadPDF(id, arrayBuffer);
       setBooks(prev => [{
         id, title: resolvedTitle, language: usedLang,
-        startPage: clampedStart, endPage: clampedEnd,
-        currentPage: clampedStart, totalPages: total,
+        start_page: clampedStart, end_page: clampedEnd,
+        current_page: clampedStart, total_pages: total,
       }, ...prev]);
     } catch (e) {
-      console.warn('Nie udało się zapisać do biblioteki:', e.message);
+      console.warn('Nie udało się zapisać do bazy:', e.message);
     }
 
-    const base = id ? makeBookBase(resolvedTitle, id) : null;
-    if (id) syncToDisk(safeFilename(resolvedTitle, id), arrayBuffer);
-    await startReading(doc, resolvedTitle, usedLang, clampedStart, clampedEnd, base);
+    await startReading(doc, resolvedTitle, usedLang, clampedStart, clampedEnd, id);
 
-    // Jeśli podano zakres → batch tłumaczenie od razu (z zapisem na dysk)
-    if (clampedEnd) {
-      batch.start(doc, clampedStart, clampedEnd, usedLang, getPageText, base);
+    if (clampedEnd && id) {
+      batch.start(doc, clampedStart, clampedEnd, usedLang, getPageText, id);
     }
   }, [loadPDF, language, sampleTexts, getPageText, batch]);
 
@@ -145,42 +115,25 @@ export default function App() {
     if (!book) return;
 
     batch.reset();
-    const filename = safeFilename(book.title, bookId);
-    let arrayBuffer = await loadFileFromDisk(filename).catch(() => null);
-    if (!arrayBuffer) arrayBuffer = await getBookPDF(bookId);
-
+    const arrayBuffer = await getBookPDF(bookId);
     if (!arrayBuffer) { alert('Nie znaleziono pliku PDF. Wgraj książkę ponownie.'); return; }
 
     const doc = await loadPDFFromBuffer(arrayBuffer);
     if (!doc) return;
 
-    setCurrentBookId(bookId);
-    const base = makeBookBase(book.title, bookId);
-
-    // Załaduj cache tłumaczeń z dysku → localStorage
+    // Załaduj obrazki z bazy
     try {
-      const { loadPageCacheFromDisk } = await import('./services/fileSystem.js');
-      const diskCache = await loadPageCacheFromDisk(base, book.language);
-      Object.entries(diskCache).forEach(([page, data]) => {
-        const k = `uanna_page_${page}_${book.language}`;
-        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify(data));
-      });
-    } catch {}
-
-    // Załaduj obrazki z dysku
-    try {
-      const imgs = await loadImagesFromDisk(base);
+      const imgs = await getImages(bookId);
       if (Object.keys(imgs).length) setPageImages(imgs);
     } catch {}
 
-    const bookStart = book.startPage || 1;
-    const bookEnd = book.endPage || doc.numPages;
+    const bookStart = book.start_page || 1;
+    const bookEnd = book.end_page || doc.numPages;
 
-    await startReading(doc, book.title, book.language, bookStart, book.endPage, base);
-    setCurrentPage(book.currentPage || bookStart);
+    await startReading(doc, book.title, book.language, bookStart, book.end_page, bookId);
+    setCurrentPage(book.current_page || bookStart);
 
-    // Uruchom batch dla stron które nie mają jeszcze tłumaczenia (z zapisem na dysk)
-    batch.start(doc, bookStart, bookEnd, book.language, getPageText, base);
+    batch.start(doc, bookStart, bookEnd, book.language, getPageText, bookId);
   }, [books, loadPDFFromBuffer, sampleTexts, batch, getPageText]);
 
   const handleDeleteBook = useCallback(async (bookId) => {
@@ -193,17 +146,20 @@ export default function App() {
     const newEnd = Math.min((endPage || totalPages) + additionalPages, totalPages);
     setEndPage(newEnd);
     if (currentBookId) {
-      await updateBook(currentBookId, { endPage: newEnd });
-      setBooks(prev => prev.map(b => b.id === currentBookId ? { ...b, endPage: newEnd } : b));
+      await updateBook(currentBookId, { end_page: newEnd });
+      setBooks(prev => prev.map(b => b.id === currentBookId ? { ...b, end_page: newEnd } : b));
     }
-    // Uruchom batch dla nowych stron
     if (pdfDocRef.current && getPageTextRef.current) {
-      batch.start(pdfDocRef.current, (endPage || totalPages) + 1, newEnd, language, getPageTextRef.current);
+      batch.start(pdfDocRef.current, (endPage || totalPages) + 1, newEnd, language, getPageTextRef.current, currentBookId);
     }
   }, [endPage, totalPages, currentBookId, language, batch]);
 
   const handleAddImage = useCallback(async (pageNum, files) => {
-    const dataUrls = await Promise.all(files.map(fileToDataURL));
+    const dataUrls = await Promise.all(files.map(f => new Promise(res => {
+      const reader = new FileReader();
+      reader.onload = e => res(e.target.result);
+      reader.readAsDataURL(f);
+    })));
     setPageImages(prev => ({ ...prev, [pageNum]: [...(prev[pageNum] || []), ...dataUrls] }));
   }, []);
 
@@ -225,7 +181,6 @@ export default function App() {
 
       {phase === 'home' && (
         <div className="home-screen">
-          <StorageBar onFolderSet={() => {}} />
           {!loadingLibrary && (
             <Library books={books} onOpen={handleOpenBook} onDelete={handleDeleteBook} />
           )}
@@ -261,25 +216,20 @@ export default function App() {
               ← Biblioteka
             </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {!batch.running && (
-                <button
-                  className="btn-nav"
-                  style={{ minWidth: 'auto', padding: '6px 16px', fontSize: '0.78rem', borderColor: 'var(--accent-dim)', color: 'var(--accent)' }}
-                  onClick={() => {
-                    if (pdfDocRef.current && getPageTextRef.current) {
-                      batch.reset();
-                      batch.start(pdfDocRef.current, startPage, endPage || totalPages, language, getPageTextRef.current, currentBookBase);
-                    }
-                  }}
-                >
-                  ↻ Przetłumacz wszystko
-                </button>
-              )}
-              {syncStatus === 'saving' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Zapisuję…</span>}
-              {syncStatus === 'ok'     && <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>✓ Dysk</span>}
-              {syncStatus === 'error'  && <span style={{ fontSize: '0.75rem', color: '#e07080' }}>⚠ Błąd zapisu</span>}
-            </div>
+            {!batch.running && (
+              <button
+                className="btn-nav"
+                style={{ minWidth: 'auto', padding: '6px 16px', fontSize: '0.78rem', borderColor: 'var(--accent-dim)', color: 'var(--accent)' }}
+                onClick={() => {
+                  if (pdfDocRef.current && getPageTextRef.current) {
+                    batch.reset();
+                    batch.start(pdfDocRef.current, startPage, endPage || totalPages, language, getPageTextRef.current, currentBookId);
+                  }
+                }}
+              >
+                ↻ Przetłumacz wszystko
+              </button>
+            )}
           </div>
 
           <PageReader
@@ -295,7 +245,7 @@ export default function App() {
             onRemoveImage={handleRemoveImage}
             onExtendRange={handleExtendRange}
             getPageText={getPageText}
-            bookBase={currentBookBase}
+            bookId={currentBookId}
           />
         </>
       )}

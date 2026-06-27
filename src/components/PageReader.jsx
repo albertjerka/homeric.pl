@@ -7,15 +7,19 @@ import { usePageAnalysis } from '../hooks/usePageAnalysis.js';
 export default function PageReader({
   pdfDoc, currentPage, totalPages, startPage, endPage,
   language, pageImages, onPageChange, onAddImage, onRemoveImage,
-  onExtendRange, getPageText, bookBase,
+  onExtendRange, getPageText, bookId,
 }) {
   const [pageText, setPageText] = useState('');
   const [textLoading, setTextLoading] = useState(false);
-  const { getAnalysis, getCached, ensureImagePrompt, loading: analysisLoading, error } = usePageAnalysis(bookBase);
+  const { getAnalysis, getCached, ensureImagePrompt, loadCacheFromDB, loading: analysisLoading, error } = usePageAnalysis(bookId);
 
   const analysis = getCached(currentPage, language);
   const lastPage = endPage || totalPages;
   const atEnd = currentPage >= lastPage;
+
+  useEffect(() => {
+    if (bookId) loadCacheFromDB(bookId, language);
+  }, [bookId, language]);
 
   useEffect(() => {
     if (!pdfDoc || !currentPage) return;
