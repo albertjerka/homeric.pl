@@ -4,3 +4,6 @@ dist/
 .DS_Store
 *.local
 biblioteka/
+uanna.db
+uanna.db-shm
+uanna.db-wal
