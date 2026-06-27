@@ -13,6 +13,7 @@ import {
   getAllBooks, saveBook, uploadPDF, getBookPDF,
   updateBook, deleteBook, getImages, saveImages,
 } from './services/dbApi.js';
+import { migrateFromLocalStorage } from './services/migration.js';
 
 export default function App() {
   const [phase, setPhase] = useState('home');
@@ -28,6 +29,7 @@ export default function App() {
   const [pageImages, setPageImages] = useState({});
   const [books, setBooks] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [migrationStatus, setMigrationStatus] = useState(null);
 
   const pdfDocRef = useRef(null);
   const getPageTextRef = useRef(null);
@@ -39,7 +41,20 @@ export default function App() {
   useEffect(() => { getPageTextRef.current = getPageText; }, [getPageText]);
 
   useEffect(() => {
-    getAllBooks().then(b => { setBooks(b); setLoadingLibrary(false); }).catch(() => setLoadingLibrary(false));
+    async function init() {
+      try {
+        const imported = await migrateFromLocalStorage(msg => setMigrationStatus(msg));
+        if (imported?.length) {
+          const total = imported.reduce((s, b) => s + b.count, 0);
+          setMigrationStatus(`Zaimportowano ${total} stron z poprzedniej sesji`);
+          setTimeout(() => setMigrationStatus(null), 4000);
+        }
+      } catch (e) {
+        console.warn('Migracja nie powiodła się:', e.message);
+      }
+      getAllBooks().then(b => { setBooks(b); setLoadingLibrary(false); }).catch(() => setLoadingLibrary(false));
+    }
+    init();
   }, []);
 
   useEffect(() => {
@@ -178,6 +193,12 @@ export default function App() {
           <ExportButton language={language} bookTitle={bookTitle} pageImages={pageImages} />
         )}
       />
+
+      {migrationStatus && (
+        <div style={{ background: 'var(--accent-dim)', color: 'var(--accent)', padding: '8px 32px', fontSize: '0.82rem', textAlign: 'center' }}>
+          {migrationStatus}
+        </div>
+      )}
 
       {phase === 'home' && (
         <div className="home-screen">
