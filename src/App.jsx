@@ -30,6 +30,7 @@ export default function App() {
   const [books, setBooks] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [migrationStatus, setMigrationStatus] = useState(null);
+  const pdfPickerRef = useRef(null);
 
   const pdfDocRef = useRef(null);
   const getPageTextRef = useRef(null);
@@ -125,13 +126,28 @@ export default function App() {
     }
   }, [loadPDF, language, sampleTexts, getPageText, batch]);
 
+  function pickPDFFile() {
+    return new Promise((resolve) => {
+      const input = pdfPickerRef.current;
+      input.value = '';
+      input.onchange = e => resolve(e.target.files?.[0] ?? null);
+      input.click();
+    });
+  }
+
   const handleOpenBook = useCallback(async (bookId) => {
     const book = books.find(b => b.id === bookId);
     if (!book) return;
 
     batch.reset();
-    const arrayBuffer = await getBookPDF(bookId);
-    if (!arrayBuffer) { alert('Nie znaleziono pliku PDF. Wgraj książkę ponownie.'); return; }
+    let arrayBuffer = await getBookPDF(bookId);
+
+    if (!arrayBuffer) {
+      const file = await pickPDFFile();
+      if (!file) return;
+      arrayBuffer = await file.arrayBuffer();
+      await uploadPDF(bookId, arrayBuffer);
+    }
 
     const doc = await loadPDFFromBuffer(arrayBuffer);
     if (!doc) return;
@@ -184,6 +200,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
+      <input ref={pdfPickerRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} />
       <Header
         language={language}
         onLanguageChange={setLanguage}
