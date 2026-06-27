@@ -32,7 +32,7 @@ export default function PageView({ pageText, analysis, loading, error, pageImage
   // Fallback dla białych: sentenceMap (stare cache bez word_translations)
   const sentenceMap = {};
   analysis?.sentences?.forEach(s => {
-    const words = s.original.match(/[\wа-яёА-ЯЁ'-]+/gi) || [];
+    const words = s.original.match(/[\wа-яёіїєґА-ЯЁІЇЄҐ'-]+/gi) || [];
     words.forEach(w => {
       const k = w.toLowerCase();
       if (!sentenceMap[k]) sentenceMap[k] = s.polish;
@@ -73,9 +73,9 @@ export default function PageView({ pageText, analysis, loading, error, pageImage
             {/* ── Oryginał – wszystkie słowa z tooltipami ── */}
             {activeTab === 1 && (
               <div className="text-block original">
-                {(analysis?.vocabulary?.length > 0 || analysis?.sentences?.length > 0)
-                  ? renderFlowingText(pageText, vocabMap, fullMap, sentenceMap)
-                  : pageText || <span style={{ color: 'var(--text-muted)' }}>Brak tekstu.</span>
+                {pageText
+                  ? (renderFlowingText(pageText, vocabMap, fullMap, sentenceMap) || pageText)
+                  : <span style={{ color: 'var(--text-muted)' }}>Ładowanie tekstu…</span>
                 }
               </div>
             )}
@@ -225,7 +225,7 @@ function renderFlowingText(text, vocabMap, fullMap, sentenceMap) {
   const tokens = text.split(/([\s\n]+|[.,!?;:«»„"()[\]{}/\\—–-]+)/);
 
   return tokens.map((token, i) => {
-    const clean = token.replace(/[^а-яёa-zA-ZА-ЯЁ'-]/gi, '').toLowerCase();
+    const clean = token.replace(/[^а-яёіїєґa-zA-ZА-ЯЁІЇЄҐ'-]/gi, '').toLowerCase();
     if (!clean) return token;
 
     // Żółte = kluczowe słówka ze słowniczka
@@ -252,7 +252,7 @@ function renderSentenceWords(text, keyWords, vocabMap, fullMap, sentenceMap, sen
   const tokens = text.split(/([\s\n]+|[.,!?;:«»„"()[\]{}/\\—–-]+)/);
 
   return tokens.map((token, i) => {
-    const clean = token.replace(/[^а-яёa-zA-ZА-ЯЁ'-]/gi, '').toLowerCase();
+    const clean = token.replace(/[^а-яёіїєґa-zA-ZА-ЯЁІЇЄҐ'-]/gi, '').toLowerCase();
     if (!clean) return token;
 
     if (keySet.has(clean)) {
