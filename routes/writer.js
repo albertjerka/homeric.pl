@@ -716,19 +716,14 @@ router.post('/ai', async (req, res) => {
         ]
       : userMessage;
 
-    // Prefill "{" wymusza czysty JSON (bez markdown) — Claude kontynuuje od nawiasu
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 3500,
       system: HOMER_AI_SYSTEM,
-      messages: [
-        { role: 'user', content: userContent },
-        { role: 'assistant', content: '{' }, // prefill — wymusza JSON
-      ],
+      messages: [{ role: 'user', content: userContent }],
     });
 
-    // Rekonstruuj pełny JSON (prefill dodaje "{" na początku)
-    const rawOutput = '{' + message.content[0].text;
+    const rawOutput = message.content[0].text;
     const structured = parseAiResponse(rawOutput);
 
     // Zapisz w bazie
