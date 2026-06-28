@@ -1,3 +1,5 @@
+import WordOfTheDay from './WordOfTheDay.jsx';
+
 export default function Dashboard({ onSelect }) {
   return (
     <div className="dashboard">
@@ -25,6 +27,17 @@ export default function Dashboard({ onSelect }) {
           <p>Twórz własną powieść, sceny, rozdziały i styl — z pomocą Homer AI oraz Słownika Lindego.</p>
           <button className="tile-btn">Rozpocznij pisanie</button>
         </div>
+      </div>
+
+      {/* Słowo dnia */}
+      <div className="dashboard-wotd-section">
+        <div className="dashboard-wotd-intro">
+          <div className="dashboard-wotd-intro-title">Ucz się słów przy pisaniu</div>
+          <div className="dashboard-wotd-intro-text">
+            Homeric wydobywa z dawnych słowników słowa, które mogą wzbogacić Twój styl.
+          </div>
+        </div>
+        <WordOfTheDay onUseInWriter={() => onSelect('writer')} />
       </div>
     </div>
   );

@@ -165,4 +165,55 @@ Pisz po polsku, akademicko lecz przystępnie.`;
   });
 });
 
+// ─── Słowo dnia ───────────────────────────────────────────────────────────────
+
+router.get('/word-of-the-day', async (req, res) => {
+  try {
+    // Liczymy kwalifikujące się hasła (krótkie, sensowne, bez OCR-śmieci)
+    const countR = await pool.query(`
+      SELECT COUNT(*) FROM linde_entries
+      WHERE LENGTH(headword) BETWEEN 4 AND 14
+        AND LENGTH(COALESCE(body,'')) BETWEEN 60 AND 800
+        AND headword ~ '^[A-ZĄĆĘŁŃÓŚŹŻ][A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż]+$'
+    `);
+    const total = parseInt(countR.rows[0].count);
+
+    if (!total) {
+      return res.json({ empty: true, message: 'Słowniki nie zostały jeszcze zaimportowane.' });
+    }
+
+    // Deterministyczny offset — zmienia się każdego dnia, każde "losuj" dodaje random offset
+    const today = new Date();
+    const dayOfYear = Math.floor((today - new Date(today.getFullYear(), 0, 0)) / 86400000);
+    const randomSeed = parseInt(req.query.seed || 0);
+    const offset = ((dayOfYear * 137 + randomSeed * 31) % total + total) % total;
+
+    const r = await pool.query(`
+      SELECT headword, body, volume FROM linde_entries
+      WHERE LENGTH(headword) BETWEEN 4 AND 14
+        AND LENGTH(COALESCE(body,'')) BETWEEN 60 AND 800
+        AND headword ~ '^[A-ZĄĆĘŁŃÓŚŹŻ][A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż]+$'
+      ORDER BY id
+      OFFSET $1 LIMIT 1
+    `, [offset]);
+
+    if (!r.rows[0]) return res.json({ empty: true });
+
+    const e = r.rows[0];
+    // Wyciągnij pierwsze zdanie definicji jako meaning
+    const meaning = (e.body || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 260);
+
+    res.json({
+      headword: e.headword,
+      source: `Słownik Lindego, Tom ${e.volume}`,
+      meaning,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

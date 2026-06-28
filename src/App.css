@@ -3583,3 +3583,303 @@ body::before {
   border-bottom: 1px solid rgba(229,115,115,0.2);
   flex-shrink: 0;
 }
+
+/* ─── Słowo dnia (WordOfTheDay) ──────────────────────────────────────────── */
+
+.dashboard-wotd-section {
+  max-width: 800px;
+  margin: 32px auto 0;
+  padding: 0 24px 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 680px) {
+  .dashboard-wotd-section { grid-template-columns: 1fr; }
+}
+
+.dashboard-wotd-intro {
+  padding: 20px 0;
+}
+.dashboard-wotd-intro-title {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 1rem;
+  color: var(--accent, #d4af37);
+  margin-bottom: 8px;
+}
+.dashboard-wotd-intro-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.wotd-card {
+  background: var(--bg-secondary, #12100e);
+  border: 1px solid rgba(212,175,55,0.25);
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wotd-card.wotd-loading,
+.wotd-card.wotd-empty { opacity: 0.6; }
+.wotd-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wotd-icon {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 1.1rem;
+  color: var(--accent-dim, #c9a227);
+}
+.wotd-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  flex: 1;
+}
+.wotd-roll-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 24px; height: 24px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.wotd-roll-btn:hover { border-color: var(--accent-dim); color: var(--accent-dim); }
+
+.wotd-headword {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 1.4rem;
+  color: var(--accent, #d4af37);
+  letter-spacing: 0.04em;
+}
+.wotd-source {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.wotd-meaning {
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.wotd-skeleton {
+  height: 20px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px;
+  animation: aiPulse 1.2s ease infinite;
+}
+.wotd-use-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgba(212,175,55,0.3);
+  border-radius: 5px;
+  color: var(--accent-dim, #c9a227);
+  font-size: 0.76rem;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+.wotd-use-btn:hover { background: rgba(201,162,39,0.08); border-color: var(--accent-dim); }
+
+/* ─── DictionaryMaterial sekcja ──────────────────────────────────────────── */
+
+.ai-dict-section {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(201,162,39,0.04);
+}
+.ai-dict-section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-dim, #c9a227);
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-dict-icon {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.85rem;
+}
+.ai-dict-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.ai-dict-hw-btn {
+  background: none;
+  border: 1px solid rgba(201,162,39,0.25);
+  border-radius: 4px;
+  color: var(--accent-dim, #c9a227);
+  font-size: 0.76rem;
+  padding: 2px 9px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ai-dict-hw-btn:hover, .ai-dict-hw-btn.open {
+  background: rgba(201,162,39,0.1);
+  border-color: var(--accent-dim, #c9a227);
+}
+.ai-dict-detail {
+  background: rgba(0,0,0,0.25);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-dict-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-dict-detail-hw {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.9rem;
+  color: var(--accent, #d4af37);
+  font-weight: 700;
+}
+.ai-dict-detail-src {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.btn-ai-sm {
+  background: none;
+  border: 1px solid rgba(201,162,39,0.3);
+  border-radius: 4px;
+  color: var(--accent-dim, #c9a227);
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.btn-ai-sm:hover { background: rgba(201,162,39,0.1); }
+.ai-dict-detail-meaning {
+  font-size: 0.8rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.ai-dict-detail-use {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.5;
+}
+.ai-dict-use-label {
+  font-style: normal;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+/* ─── RelatedWords sekcja ────────────────────────────────────────────────── */
+
+.ai-related-section {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.ai-related-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.ai-related-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+}
+.ai-related-base {
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-right: 2px;
+}
+.ai-related-word {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+}
+
+/* ─── Karta wariantu ─────────────────────────────────────────────────────── */
+
+.ai-variants-section {
+  display: flex;
+  flex-direction: column;
+}
+.ai-variant-card {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+}
+.ai-variant-card-label {
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+.ai-variant-card-text {
+  font-size: 0.88rem;
+  line-height: 1.8;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-variant-card-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 9px;
+  flex-wrap: wrap;
+}
+.btn-ai-action {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+}
+.btn-ai-action:hover { border-color: var(--accent-dim); color: var(--text-primary); }
+.btn-ai-action.copy { margin-left: auto; }
+
+/* Uwaga redaktorska */
+.ai-editor-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  line-height: 1.6;
+  display: flex;
+  gap: 7px;
+}
+.ai-editor-note-icon { flex-shrink: 0; font-style: normal; }

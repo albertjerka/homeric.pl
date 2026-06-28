@@ -21,15 +21,78 @@ function toBase64(file) {
   });
 }
 
-function VariantCard({ variant, idx, onInsert, onReplace, onNote }) {
-  const [copied, setCopied] = useState(false);
+// ── Sekcja A: materiał słownikowy ─────────────────────────────────────────────
+function DictionaryMaterial({ items, onAddToScene }) {
+  const [open, setOpen] = useState(null);
+  if (!items?.length) return null;
+  return (
+    <div className="ai-dict-section">
+      <div className="ai-dict-section-title">
+        <span className="ai-dict-icon">Λ</span>
+        Materiał ze słowników ({items.length} haseł)
+      </div>
+      <div className="ai-dict-tags">
+        {items.map((item, i) => (
+          <button
+            key={item.headword + i}
+            className={`ai-dict-hw-btn${open === i ? ' open' : ''}`}
+            onClick={() => setOpen(open === i ? null : i)}
+          >
+            {item.headword}
+          </button>
+        ))}
+      </div>
+      {open !== null && items[open] && (
+        <div className="ai-dict-detail">
+          <div className="ai-dict-detail-head">
+            <span className="ai-dict-detail-hw">{items[open].headword}</span>
+            <span className="ai-dict-detail-src">{items[open].source}</span>
+            {onAddToScene && (
+              <button className="btn-ai-sm" onClick={() => onAddToScene(items[open].headword)}>
+                + Do sceny
+              </button>
+            )}
+          </div>
+          {items[open].meaning && (
+            <div className="ai-dict-detail-meaning">{items[open].meaning}</div>
+          )}
+          {items[open].suggested_use && (
+            <div className="ai-dict-detail-use">
+              <span className="ai-dict-use-label">Zastosowanie:</span> {items[open].suggested_use}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
+// ── Sekcja B: słowa pokrewne ──────────────────────────────────────────────────
+function RelatedWords({ items }) {
+  if (!items?.length) return null;
+  return (
+    <div className="ai-related-section">
+      <div className="ai-related-title">Słowa pokrewne i bliskoznaczne</div>
+      {items.map((group, i) => (
+        <div key={i} className="ai-related-group">
+          <span className="ai-related-base">{group.base}:</span>
+          {(group.words || []).map(w => (
+            <span key={w} className="ai-related-word">{w}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Karta wariantu ────────────────────────────────────────────────────────────
+function VariantCard({ variant, onInsert, onReplace, onNote }) {
+  const [copied, setCopied] = useState(false);
   function copy() {
     navigator.clipboard?.writeText(variant.text).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
-
   return (
     <div className="ai-variant-card">
       <div className="ai-variant-card-label">{variant.label}</div>
@@ -38,76 +101,79 @@ function VariantCard({ variant, idx, onInsert, onReplace, onNote }) {
         <button className="btn-ai-action" onClick={() => onInsert?.(variant.text)}>Wstaw</button>
         <button className="btn-ai-action" onClick={() => onReplace?.(variant.text)}>Zastąp</button>
         <button className="btn-ai-action" onClick={() => onNote?.(variant.text)}>Notatka</button>
-        <button className="btn-ai-action copy" onClick={copy}>{copied ? '✓' : 'Kopiuj'}</button>
+        <button className="btn-ai-action copy" onClick={copy}>{copied ? '✓ Skopiowano' : 'Kopiuj'}</button>
       </div>
     </div>
   );
 }
 
-function LindeSection({ terms }) {
-  const [expanded, setExpanded] = useState(null);
-  if (!terms?.length) return null;
-  return (
-    <div className="ai-linde-section">
-      <div className="ai-linde-section-title">Materiał ze Słownika Lindego ({terms.length} haseł)</div>
-      <div className="ai-linde-tags">
-        {terms.map((t, i) => (
-          <button
-            key={t.headword}
-            className={`ai-linde-hw-btn${expanded === i ? ' open' : ''}`}
-            onClick={() => setExpanded(expanded === i ? null : i)}
-          >
-            {t.headword}
-          </button>
-        ))}
-      </div>
-      {expanded !== null && terms[expanded] && (
-        <div className="ai-linde-body">
-          <div className="ai-linde-body-hw">{terms[expanded].headword} <span className="ai-linde-body-src">({terms[expanded].source})</span></div>
-          <div className="ai-linde-body-text">{terms[expanded].body}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MessageBubble({ msg, onInsert, onReplace, onNote }) {
+// ── Bańka wiadomości ──────────────────────────────────────────────────────────
+function MessageBubble({ msg, onInsert, onReplace, onNote, onAddToScene }) {
   const modeName = MODES.find(m => m.key === msg.mode)?.label || msg.mode || '';
+  const { structured, lindeTerms } = msg;
+
   return (
     <div className="ai-msg-bubble">
+      {/* Nagłówek */}
       <div className="ai-msg-bubble-meta">
         <span className="ai-msg-bubble-mode">{modeName}</span>
-        {msg.prompt && <span className="ai-msg-bubble-prompt">„{msg.prompt.slice(0, 80)}{msg.prompt.length > 80 ? '…' : ''}"</span>}
+        {msg.prompt && (
+          <span className="ai-msg-bubble-prompt">
+            „{msg.prompt.slice(0, 80)}{msg.prompt.length > 80 ? '…' : ''}"
+          </span>
+        )}
         <span className="ai-msg-bubble-time">
           {new Date(msg.ts).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
 
-      {/* Linde materiał */}
-      <LindeSection terms={msg.lindeTerms} />
-
-      {/* Warianty w kartach */}
-      {(msg.variants || []).map((v, i) => (
-        <VariantCard key={i} variant={v} idx={i} onInsert={onInsert} onReplace={onReplace} onNote={onNote} />
-      ))}
-
-      {/* Notatka redaktora */}
-      {msg.editorNote && (
-        <div className="ai-editor-note">📝 {msg.editorNote}</div>
+      {/* A. Materiał słownikowy — z Lindego przez backend */}
+      {lindeTerms?.length > 0 && (
+        <DictionaryMaterial
+          items={lindeTerms}
+          onAddToScene={onAddToScene}
+        />
       )}
 
-      {/* Słowa zainspirowane Linde */}
-      {msg.lindeInspirations?.length > 0 && (
-        <div className="ai-linde-inspirations">
-          <span className="ai-linde-insp-label">Sugestie słownikowe:</span>
-          {msg.lindeInspirations.map(w => <span key={w} className="ai-linde-insp-tag">{w}</span>)}
+      {/* A2. Materiał słownikowy — wybrany przez AI */}
+      {structured?.dictionary_material?.length > 0 && (
+        <DictionaryMaterial
+          items={structured.dictionary_material}
+          onAddToScene={onAddToScene}
+        />
+      )}
+
+      {/* B. Słowa pokrewne */}
+      <RelatedWords items={structured?.related_words} />
+
+      {/* C. Warianty */}
+      <div className="ai-variants-section">
+        {(structured?.variants || []).map((v, i) => (
+          <VariantCard
+            key={i}
+            variant={v}
+            onInsert={onInsert}
+            onReplace={onReplace}
+            onNote={onNote}
+          />
+        ))}
+      </div>
+
+      {/* D. Uwaga redaktorska */}
+      {structured?.editor_note && (
+        <div className="ai-editor-note">
+          <span className="ai-editor-note-icon">✒</span>
+          {structured.editor_note}
         </div>
       )}
     </div>
   );
 }
 
-export default function WriterAIPanel({ selectedText, chapterText, projectId, chapterId, onInsert, onReplace, onNote }) {
+// ── Główny panel ──────────────────────────────────────────────────────────────
+export default function WriterAIPanel({
+  selectedText, chapterText, projectId, chapterId, onInsert, onReplace, onNote,
+}) {
   const [mode, setMode] = useState('improve_style');
   const [prompt, setPrompt] = useState('');
   const [sceneWords, setSceneWords] = useState([]);
@@ -120,7 +186,6 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
   const historyRef = useRef();
   const prevChapterId = useRef(chapterId);
 
-  // Gdy zmienia się rozdział, wyczyść historię widoku (nie DB)
   useEffect(() => {
     if (chapterId !== prevChapterId.current) {
       setMessages([]);
@@ -128,12 +193,16 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
     }
   }, [chapterId]);
 
-  // Auto-scroll do ostatniej odpowiedzi
   useEffect(() => {
     if (historyRef.current) {
       historyRef.current.scrollTop = historyRef.current.scrollHeight;
     }
   }, [messages]);
+
+  function handleAddToScene(word) {
+    const w = word.toLowerCase();
+    if (!sceneWords.includes(w)) setSceneWords(prev => [...prev, w]);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -145,10 +214,9 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
     setLoading(true);
     setError('');
 
-    // Historia dla kontynuacji — ostatnie 3 wymiany
     const history = messages.slice(-3).flatMap(msg => [
-      { role: 'user', content: msg.prompt || msg.inputText || '' },
-      { role: 'assistant', content: (msg.variants || []).map(v => `${v.label}:\n${v.text}`).join('\n\n') },
+      { role: 'user', content: msg.prompt || '' },
+      { role: 'assistant', content: (msg.structured?.variants || []).map(v => `${v.label}: ${v.text}`).join('\n\n') },
     ]);
 
     try {
@@ -170,18 +238,14 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
 
       const r = await aiAction(payload);
 
-      const newMsg = {
+      setMessages(prev => [...prev, {
         id: Date.now(),
         mode,
         prompt: prompt.trim(),
-        inputText: selectedText?.trim() || '',
-        variants: r.structured?.variants || [],
+        structured: r.structured || {},
         lindeTerms: r.lindeTerms || [],
-        lindeInspirations: r.structured?.linde_inspirations || [],
-        editorNote: r.structured?.editor_note || '',
         ts: Date.now(),
-      };
-      setMessages(prev => [...prev, newMsg]);
+      }]);
       setPrompt('');
     } catch (e) {
       setError(e.message);
@@ -206,8 +270,7 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
   function addSceneWord(e) {
     if (e.key === 'Enter' && wordInput.trim()) {
       e.preventDefault();
-      const w = wordInput.trim().toLowerCase();
-      if (!sceneWords.includes(w)) setSceneWords(prev => [...prev, w]);
+      handleAddToScene(wordInput.trim());
       setWordInput('');
     }
   }
@@ -234,7 +297,7 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
         {selectedText ? (
           <>
             <span className="ai-context-label">Zaznaczono:</span>
-            <span className="ai-context-text">„{selectedText.slice(0, 120)}{selectedText.length > 120 ? '…' : ''}„</span>
+            <span className="ai-context-text">„{selectedText.slice(0, 110)}{selectedText.length > 110 ? '…' : ''}"</span>
           </>
         ) : (
           <span className="ai-context-none">Brak zaznaczenia — AI użyje treści rozdziału.</span>
@@ -261,7 +324,7 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
         </div>
       </div>
 
-      {/* Prompt */}
+      {/* Formularz promptu */}
       <form className="ai-prompt-form" onSubmit={handleSubmit}>
         <textarea
           className="ai-prompt-textarea"
@@ -288,20 +351,22 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
       </form>
 
       {error && <div className="ai-error-bar">{error}</div>}
-
       {loading && (
         <div className="ai-loading-bar">
-          <span className="ai-loading-dot" /> Homer AI pracuje…
+          <span className="ai-loading-dot" />
+          Homer AI analizuje słownik i pisze warianty…
         </div>
       )}
 
-      {/* Historia odpowiedzi */}
+      {/* Historia */}
       <div className="ai-history" ref={historyRef}>
         {messages.length === 0 && !loading && (
           <div className="ai-history-empty">
             <div className="ai-history-empty-icon">Η</div>
-            <div>Wybierz tryb, zaznacz tekst i wyślij — odpowiedzi będą tu widoczne.</div>
-            <div className="ai-history-empty-sub">Historia nie znika po zmianie zakładki.</div>
+            <div>Wybierz tryb, zaznacz tekst i wyślij.</div>
+            <div className="ai-history-empty-sub">
+              AI najpierw przeszuka słownik Lindego, a potem zaproponuje warianty literackie.
+            </div>
           </div>
         )}
         {messages.map(msg => (
@@ -311,6 +376,7 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
             onInsert={onInsert}
             onReplace={onReplace}
             onNote={onNote}
+            onAddToScene={handleAddToScene}
           />
         ))}
       </div>

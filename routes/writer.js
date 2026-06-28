@@ -341,6 +341,106 @@ function normPL(s) {
   return r;
 }
 
+// Słowa puste — nie szukamy ich w słownikach
+const STOP_WORDS = new Set([
+  'i','w','na','się','że','oraz','albo','to','jest','był','ma','nie','a','o','z','do',
+  'po','przez','przy','za','ale','bo','czy','jak','już','też','tylko','go','mu','jej',
+  'ich','tam','tu','co','kto','który','gdy','kiedy','mnie','jego','te','ten','ta','więc',
+  'są','by','dla','od','ze','we','im','on','ona','ono','oni','one','mój','twój','nasz',
+  'wasz','tego','tej','temu','tą','tym','tych','tymi','pan','pani','być','mieć','robić',
+  'więcej','mniej','było','będzie','się','swoją','swoje','swój','tego','tej','te','ci',
+]);
+
+// Pola semantyczne — rozszerzają wyszukiwanie o słowa bliskoznaczne
+const SEMANTIC_FIELDS = [
+  { key: ['smut','zal','bol','plak','zasmuc'], words: ['żal','boleść','frasunek','żałość','strapienie','zgryzota','tęsknota'] },
+  { key: ['trwog','lek','strach','bac','bojaz'], words: ['lęk','bojaźń','trwoga','zatrwożenie','przestrach'] },
+  { key: ['radosc','wesol','smia','uciech','szczesci'], words: ['wesele','uciecha','rozkosz','szczęście'] },
+  { key: ['gniw','zlosc','wsciek','zapalcz'], words: ['złość','zapalczywość','oburzenie','wzburzenie'] },
+  { key: ['ogien','plomien','zar','pozog','zarze'], words: ['płomień','żar','pożoga','zarzewie','zapłon'] },
+  { key: ['wod','rzek','nurt','fal','topiel','strum'], words: ['nurt','fala','głębia','topiel','zdrój','strumień'] },
+  { key: ['las','bor','puszcz','kneja'], words: ['bór','puszcza','kneja','ostępy','gąszcz'] },
+  { key: ['los','dol','niedol','przeznacz'], words: ['dola','niedola','przeznaczenie','fatum','powinność'] },
+  { key: ['pamiec','wspomn'], words: ['wspomnienie','pomnienie','niepamięć'] },
+  { key: ['smierc','zgon','koniec','zatrat','skon'], words: ['zgon','skon','zatrata'] },
+  { key: ['sila','moc','poteg','dzielnosc','krzepk'], words: ['moc','potęga','dzielność','krzepkość'] },
+  { key: ['piekn','urod','wdziek','powab'], words: ['uroda','wdzięk','powab','śliczność'] },
+  { key: ['dusz','serc','sumien','duch'], words: ['serce','sumienie','duch','wnętrze','czucie'] },
+  { key: ['dom','chata','siedzib','domost'], words: ['domostwo','siedziba','ostoja','chata'] },
+  { key: ['swiat','blask','jasn','zorz','promien'], words: ['blask','jasność','zorza','świt','promień','lśnienie'] },
+  { key: ['walka','boj','bitw','potyczk'], words: ['bój','bitwa','potyczka','starcie','zmaganie'] },
+  { key: ['milosc','milowa','ukoch'], words: ['miłowanie','ukochanie','przywiązanie'] },
+];
+
+// Końcówki fleksyjne do usuwania przy stemming
+const SUFFIXES = [
+  'ącego','ących','ącym','ącej','ości','anie','enie','ność','iem',
+  'ego','emu','ami','ach','ący','ącą','ym','ej','ość','nie','owi','ią'
+].sort((a, b) => b.length - a.length);
+
+function stemPL(norm) {
+  for (const suf of SUFFIXES) {
+    if (norm.length - suf.length >= 3 && norm.endsWith(suf)) {
+      return norm.slice(0, norm.length - suf.length);
+    }
+  }
+  return norm;
+}
+
+function generateSearchPatterns(word) {
+  const norm = normPL(word.toLowerCase());
+  const patterns = new Set();
+  patterns.add(`${norm}%`);
+  const stem = stemPL(norm);
+  if (stem !== norm && stem.length >= 3) patterns.add(`${stem}%`);
+  for (let len = 4; len <= Math.min(6, norm.length - 1); len++) {
+    patterns.add(`${norm.slice(0, len)}%`);
+  }
+  for (const field of SEMANTIC_FIELDS) {
+    if (field.key.some(k => norm.startsWith(k) || (k.length >= 4 && norm.startsWith(k.slice(0, 4))))) {
+      for (const w of field.words) patterns.add(`${normPL(w)}%`);
+    }
+  }
+  return [...patterns].slice(0, 10);
+}
+
+async function findDictionaryTermsForWriting(text, sceneWords = []) {
+  const contentWords = (text || '').toLowerCase()
+    .replace(/[^a-ząćęłńóśźż\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !STOP_WORDS.has(w));
+
+  const allWords = [
+    ...[...new Set(contentWords)].slice(0, 10),
+    ...sceneWords.map(w => w.toLowerCase()),
+  ];
+  if (!allWords.length) return [];
+
+  const allPatterns = new Set();
+  for (const w of allWords) {
+    for (const p of generateSearchPatterns(w)) allPatterns.add(p);
+  }
+
+  const arr = [...allPatterns].slice(0, 60);
+  if (!arr.length) return [];
+
+  const r = await pool.query(
+    `SELECT DISTINCT ON (headword) headword, body, volume
+     FROM linde_entries
+     WHERE normalized_headword LIKE ANY($1::text[])
+     ORDER BY headword, LENGTH(COALESCE(body,'')) DESC
+     LIMIT 35`,
+    [arr]
+  );
+
+  return r.rows.map(e => ({
+    headword: e.headword,
+    source: `Linde Tom ${e.volume}`,
+    meaning: (e.body || '').slice(0, 220),
+    body: (e.body || '').slice(0, 400),
+  }));
+}
+
 async function findDictionaryTerms(text, limit = 30) {
   if (!text?.trim()) return [];
 
@@ -381,35 +481,37 @@ async function findDictionaryTerms(text, limit = 30) {
   }));
 }
 
-// Parser odpowiedzi AI z formatu tekstowego z separatorami
+// Parsowanie odpowiedzi JSON od Claude — odporny na markdown i błędy formatu
 function parseAiResponse(raw) {
-  const variants = [];
-  // Szuka wzorca: WARIANT — Etykieta:\ntekst\n (aż do następnego WARIANT lub SŁOWA-LINDE lub UWAGA)
-  const variantRe = /WARIANT\s*[-—]\s*([^\n:]+):?\s*\n([\s\S]*?)(?=\nWARIANT\s*[-—]|\nSŁOWA-LINDE:|\nUWAGA:|$)/gi;
-  let m;
-  while ((m = variantRe.exec(raw)) !== null) {
-    const text = m[2].trim();
-    if (text) variants.push({ label: m[1].trim(), text });
+  // Usuń bloki markdown ```json ... ``` jeśli są
+  let clean = raw.replace(/^```json\s*/gm, '').replace(/^```\s*/gm, '');
+
+  // Znajdź obiekt JSON
+  let parsed = null;
+  try {
+    const m = clean.match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch {}
+
+  if (!parsed) {
+    // Fallback: całość jako jeden wariant
+    return {
+      dictionary_material: [],
+      related_words: [],
+      variants: [{ label: 'Odpowiedź', text: raw }],
+      editor_note: '',
+    };
   }
 
-  const lindeM = raw.match(/SŁOWA-LINDE:\s*([^\n]+)/i);
-  const linde_inspirations = lindeM
-    ? lindeM[1].split(/[,;]/).map(s => s.trim()).filter(Boolean)
-    : [];
-
-  const noteM = raw.match(/UWAGA:\s*([\s\S]+?)(?=\nWARIANT|\nSŁOWA-LINDE|$)/i);
-  const editor_note = noteM ? noteM[1].trim() : '';
-
-  if (!variants.length) {
-    // Fallback: cały tekst jako jedna odpowiedź, wyczyść znaczniki
-    const clean = raw
-      .replace(/SŁOWA-LINDE:[^\n]*/gi, '')
-      .replace(/UWAGA:[^\n]*/gi, '')
-      .trim();
-    variants.push({ label: 'Odpowiedź', text: clean || raw });
-  }
-
-  return { variants, linde_inspirations, editor_note };
+  // Normalizuj pola
+  return {
+    dictionary_material: Array.isArray(parsed.dictionary_material) ? parsed.dictionary_material : [],
+    related_words: Array.isArray(parsed.related_words) ? parsed.related_words : [],
+    variants: Array.isArray(parsed.variants) && parsed.variants.length
+      ? parsed.variants
+      : [{ label: 'Odpowiedź', text: raw }],
+    editor_note: parsed.editor_note || '',
+  };
 }
 
 const AI_MODES = {
@@ -477,7 +579,71 @@ router.post('/ai/dictionary-context', async (req, res) => {
   res.json({ terms });
 });
 
+// ─── AI — historia dla rozdziału ─────────────────────────────────────────────
+
+router.get('/chapters/:chapterId/ai-messages', async (req, res) => {
+  const chapterId = parseInt(req.params.chapterId);
+  const r = await pool.query(
+    `SELECT m.id, m.mode, m.prompt, m.input_text, m.output_text,
+            m.selected_text, m.linde_terms_json, m.scene_words_json, m.created_at
+     FROM writer_ai_messages m
+     JOIN writer_ai_sessions s ON s.id = m.session_id
+     WHERE s.chapter_id = $1 AND m.role = 'assistant'
+     ORDER BY m.created_at DESC LIMIT 50`,
+    [chapterId]
+  );
+  res.json(r.rows);
+});
+
+// ─── AI — kontekst słownikowy ─────────────────────────────────────────────────
+
+router.post('/ai/dictionary-context', async (req, res) => {
+  const { text, scene_words } = req.body;
+  const terms = await findDictionaryTermsForWriting(text, scene_words || []);
+  res.json({ terms });
+});
+
 // ─── Homer AI — główny endpoint ──────────────────────────────────────────────
+
+const HOMER_AI_SYSTEM = `Jesteś Homeric AI — literackim redaktorem, stylistą i pomocnikiem pisarza. Twoim zadaniem nie jest szybkie parafrazowanie, ale praca pisarska ze słownikiem, znaczeniem, rytmem i obrazem.
+
+ZASADA: Przy każdej pracy nad tekstem najpierw analizujesz słownictwo, a dopiero potem tworzysz warianty.
+
+ETAP 1 — ANALIZA SŁOWNIKOWA:
+Wydobywasz z tekstu słowa ważne (rzeczowniki, czasowniki, przymiotniki, obrazy, emocje) i ignorujesz słowa puste (spójniki, zaimki, przyimki). Dla każdego ważnego słowa szukasz w przekazanym materiale słownikowym (KONTEKST SŁOWNIKOWY): haseł, znaczeń, słów pochodnych, bliskoznacznych, archaicznych odpowiedników. Korzystasz z Lindego i dostępnych słowników.
+
+ETAP 2 — WARIANTY LITERACKIE:
+Tworzysz minimum 4 warianty. Styl archaiczny nie oznacza losowych starych słów — oznacza dawny rytm, szlachetniejszy szyk, pojęcia moralne (cnota, hańba, powinność, sumienie, dola, niedola) i obrazowe (cień, blask, pył, żar, mgła, świt). Inspirujesz się prozą XIX-wieczną (Sienkiewicz, Kraszewski, Orzeszkowa, Prus), ale tworzysz tekst oryginalny.
+
+FORMAT ODPOWIEDZI — zwróć WYŁĄCZNIE czysty JSON (bez nawiasów \`\`\`, bez tekstu przed lub po):
+
+{
+  "dictionary_material": [
+    { "headword": "hasło z Linde", "source": "Linde Tom X", "meaning": "krótkie znaczenie do 150 znaków", "suggested_use": "przykład frazy z tym słowem" }
+  ],
+  "related_words": [
+    { "base": "słowo z tekstu", "words": ["bliskoznaczne1", "archaiczny_odpowiednik", "pochodne"] }
+  ],
+  "variants": [
+    { "label": "Wersja poprawiona", "text": "..." },
+    { "label": "Wersja archaizująca", "text": "..." },
+    { "label": "Wersja ozdobna", "text": "..." },
+    { "label": "Wersja epicka", "text": "..." }
+  ],
+  "editor_note": "Co zmieniono i dlaczego — 1-3 zdania."
+}`;
+
+const MODE_EXTRA_PROMPT = {
+  improve_style: 'Główny cel: poprawiony rytm, precyzja i styl bez archaizowania.',
+  archaic_tone: 'Główny cel: dawna polszczyzna, szlachetniejszy szyk, pojęcia moralne i obrazowe, umiarkowana archaizacja. Wersja archaizująca powinna być wyraźnie różna od poprawionej. Wersja bardzo archaizująca może użyć: trwoga, frasunek, żałość, boleść, przeto, jeno, tedy, snadź, zali, albowiem.',
+  ornate: 'Główny cel: metafora, rytm, bogatsza obrazowość, silniejsze czasowniki. Wersja ozdobna powinna być poetycka ale czytelna.',
+  epic_tone: 'Główny cel: podniosłość, ciężar słowa, ton wielkiej opowieści. Wersja epicka ma brzmieć jak fragment eposu lub powieści historycznej.',
+  expand_scene: 'Główny cel: rozwinięcie sceny — opisy zmysłowe, emocje postaci, szczegóły miejsca. Daj 2 warianty rozwinięcia o różnej długości.',
+  propose_dialogue: 'Główny cel: naturalny, dramaturgicznie żywy dialog między postaciami pasujący do stylu i epoki.',
+  propose_variants: 'Główny cel: 5 wariantów o różnym stylu: prosty, literacki, archaizujący, ozdobny, epicki.',
+  linde_words: 'Główny cel: lista mocniejszych i bardziej wyrazistych odpowiedników słów z tekstu, czerpiąc z Lindego. W variants wpisz listę: "słowo oryginalne → propozycja1, propozycja2".',
+  custom: 'Wykonaj polecenie użytkownika.',
+};
 
 router.post('/ai', async (req, res) => {
   const {
@@ -492,113 +658,77 @@ router.post('/ai', async (req, res) => {
     chapter_id,
     image_base64,
     image_media_type,
-    history = [],        // [{role:'user'|'assistant', content: string}] — ostatnie wymiany
-    action_type,         // legacy compat
+    history = [],
+    action_type,
     instruction,
   } = req.body;
 
   const effectiveMode = mode || action_type || 'improve_style';
   const text = selected_text || input_text || chapter_context || '';
-
-  if (!text.trim() && !image_base64 && !userPrompt?.trim()) {
-    return res.status(400).json({ error: 'Brak tekstu, promptu ani obrazka do przetworzenia.' });
-  }
-
-  const modeConfig = AI_MODES[effectiveMode] || AI_MODES.custom;
   const customInstruction = userPrompt || instruction || '';
 
-  // Format odpowiedzi — czytelny dla parsera (NIE JSON)
-  const FORMAT = effectiveMode === 'propose_variants'
-    ? `Odpowiedz DOKŁADNIE w tym formacie (bez żadnych wstępów, komentarzy ani nawiasów klamrowych):
-
-WARIANT — Wersja prosta:
-[tu wpisz tekst]
-
-WARIANT — Wersja literacka:
-[tu wpisz tekst]
-
-WARIANT — Wersja archaizująca:
-[tu wpisz tekst]
-
-WARIANT — Wersja ozdobna:
-[tu wpisz tekst]
-
-WARIANT — Wersja epicka:
-[tu wpisz tekst]
-
-SŁOWA-LINDE: słowo1, słowo2, słowo3
-
-UWAGA: krótka uwaga`
-    : `Odpowiedz DOKŁADNIE w tym formacie (bez żadnych wstępów ani nawiasów klamrowych):
-
-WARIANT — Wersja główna:
-[tu wpisz tekst]
-
-WARIANT — Wersja alternatywna:
-[tu wpisz tekst]
-
-SŁOWA-LINDE: słowo1, słowo2, słowo3
-
-UWAGA: krótka uwaga`;
+  if (!text.trim() && !image_base64 && !customInstruction.trim()) {
+    return res.status(400).json({ error: 'Brak tekstu, promptu ani obrazka.' });
+  }
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    let lindeTerms = [];
-    if (use_linde && text.trim()) {
-      lindeTerms = await findDictionaryTerms(text, 25);
-    }
+    // Etap słownikowy — zawsze przed AI
+    const lindeTerms = (use_linde && (text.trim() || scene_words.length))
+      ? await findDictionaryTermsForWriting(text, scene_words)
+      : [];
 
-    // Kontekst historii rozmowy (ostatnie 3 wymiany)
-    let historyContext = '';
-    const recentHistory = (history || []).slice(-6); // max 3 pary user/assistant
-    if (recentHistory.length > 0) {
-      historyContext = 'HISTORIA ROZMOWY (kontynuuj w tym duchu):\n' +
-        recentHistory.map(h => `${h.role === 'user' ? 'Pisarz' : 'Homeric AI'}: ${String(h.content).slice(0, 400)}`).join('\n\n') +
-        '\n\n---\n\n';
-    }
+    // Kontekst słownikowy do promptu
+    const lindeContext = lindeTerms.length
+      ? 'KONTEKST SŁOWNIKOWY (Słownik Lindego — użyj jako materiału stylistycznego):\n' +
+        lindeTerms.map(t => `• ${t.headword} [${t.source}]: ${t.meaning}`).join('\n') +
+        '\n\n'
+      : '';
 
-    // Linde jako materiał stylistyczny
-    let lindeContext = '';
-    if (lindeTerms.length > 0) {
-      lindeContext = 'MATERIAŁ ZE SŁOWNIKA LINDEGO (użyj jako inspiracji stylistycznej):\n' +
-        lindeTerms.map(t => `• ${t.headword}: ${t.body.slice(0, 200)}`).join('\n') +
-        '\n\n';
-    }
+    // Kontekst historii (ostatnie 3 wymiany)
+    const histContext = history.slice(-6).length
+      ? 'HISTORIA ROZMOWY:\n' +
+        history.slice(-6).map(h => `${h.role === 'user' ? 'PISARZ' : 'AI'}: ${String(h.content).slice(0, 350)}`).join('\n\n') +
+        '\n\n'
+      : '';
 
-    // Słowa do sceny
-    let sceneContext = '';
-    if (scene_words.length > 0) {
-      sceneContext = `SŁOWA DO SCENY (wpleć w tekst): ${scene_words.join(', ')}\n\n`;
-    }
+    const sceneContext = scene_words.length
+      ? `SŁOWA DO SCENY (obowiązkowo wpleć w warianty): ${scene_words.join(', ')}\n\n`
+      : '';
+
+    const modeExtra = MODE_EXTRA_PROMPT[effectiveMode] || MODE_EXTRA_PROMPT.custom;
 
     const userMessage = [
-      historyContext,
+      histContext,
       lindeContext,
       sceneContext,
-      customInstruction.trim() ? `INSTRUKCJA: ${customInstruction}\n\n` : '',
+      `TRYB: ${effectiveMode}\n${modeExtra}\n\n`,
+      customInstruction.trim() ? `INSTRUKCJA PISARZA: ${customInstruction}\n\n` : '',
       text.trim() ? `TEKST DO OPRACOWANIA:\n${text}\n\n` : '',
-      FORMAT,
     ].join('').trim();
 
-    // Buduj tablicę wiadomości dla Claude
-    const claudeMessages = [{ role: 'user', content: image_base64
+    const userContent = image_base64
       ? [
           { type: 'image', source: { type: 'base64', media_type: image_media_type || 'image/jpeg', data: image_base64 } },
           { type: 'text', text: userMessage },
         ]
-      : userMessage,
-    }];
+      : userMessage;
 
+    // Prefill "{" wymusza czysty JSON (bez markdown) — Claude kontynuuje od nawiasu
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 3500,
-      system: modeConfig.system + '\n\nWAŻNE: Odpowiadaj TYLKO w podanym formacie z separatorami WARIANT —, SŁOWA-LINDE:, UWAGA:. Nie używaj nawiasów klamrowych ani JSON. Tekst wariantów pisz po polsku, literacko.',
-      messages: claudeMessages,
+      system: HOMER_AI_SYSTEM,
+      messages: [
+        { role: 'user', content: userContent },
+        { role: 'assistant', content: '{' }, // prefill — wymusza JSON
+      ],
     });
 
-    const rawOutput = message.content[0].text;
+    // Rekonstruuj pełny JSON (prefill dodaje "{" na początku)
+    const rawOutput = '{' + message.content[0].text;
     const structured = parseAiResponse(rawOutput);
 
     // Zapisz w bazie
@@ -606,22 +736,19 @@ UWAGA: krótka uwaga`;
       let sessionR = chapter_id
         ? await pool.query(`SELECT id FROM writer_ai_sessions WHERE chapter_id=$1 ORDER BY created_at DESC LIMIT 1`, [chapter_id])
         : { rows: [] };
-
       if (!sessionR.rows.length) {
         sessionR = await pool.query(
           `INSERT INTO writer_ai_sessions (project_id, chapter_id, title) VALUES ($1,$2,$3) RETURNING id`,
-          [project_id||null, chapter_id||null, `Sesja AI — ${new Date().toLocaleString('pl-PL')}`]
+          [project_id||null, chapter_id||null, `Sesja AI`]
         );
       }
-
       await pool.query(
         `INSERT INTO writer_ai_messages
            (session_id, role, mode, prompt, input_text, output_text, selected_text, linde_terms_json, scene_words_json)
          VALUES ($1,'assistant',$2,$3,$4,$5,$6,$7,$8)`,
         [
           sessionR.rows[0].id, effectiveMode,
-          customInstruction.slice(0, 2000),
-          text.slice(0, 2000),
+          customInstruction.slice(0, 2000), text.slice(0, 2000),
           rawOutput.slice(0, 4000),
           (selected_text || '').slice(0, 1000),
           JSON.stringify(lindeTerms.map(t => t.headword)),
