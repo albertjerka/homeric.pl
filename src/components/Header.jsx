@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 
-export default function Header({ language, onLanguageChange, headerImage, onHeaderImageChange, exportButton }) {
+export default function Header({ language, onLanguageChange, headerImage, onHeaderImageChange, exportButton, onBackToDashboard }) {
   const fileRef = useRef();
 
   return (
@@ -41,6 +41,9 @@ export default function Header({ language, onLanguageChange, headerImage, onHead
       </div>
 
       <div className="header-right">
+        {onBackToDashboard && (
+          <button className="btn-ghost-sm" onClick={onBackToDashboard} style={{ marginRight: '8px' }}>← Menu</button>
+        )}
         {exportButton}
         <div className="lang-switch">
           <button className={language === 'ru' ? 'active' : ''} onClick={() => onLanguageChange('ru')}>RU</button>

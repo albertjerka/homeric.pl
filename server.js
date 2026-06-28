@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool, { initDb } from './db.js';
+import writerRoutes from './routes/writer.js';
+import lindeRoutes from './routes/linde.js';
 
 dotenv.config();
 
@@ -238,6 +240,11 @@ app.put('/api/images/:bookId/:pageNum', requireAuth, async (req, res) => {
   }
   res.json({ ok: true });
 });
+
+// ─── Writer & Linde routes ───────────────────────────────────────────────────
+
+app.use('/api/writer', writerRoutes);
+app.use('/api/linde', lindeRoutes);
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 

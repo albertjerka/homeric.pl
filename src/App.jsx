@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import LoginPage from './components/LoginPage.jsx';
+import Dashboard from './components/Dashboard.jsx';
+import WriterHome from './components/WriterHome.jsx';
+import WriterProjectEditor from './components/WriterProjectEditor.jsx';
 import { isLoggedIn } from './services/auth.js';
 import Header from './components/Header.jsx';
 import Library from './components/Library.jsx';
@@ -17,7 +20,7 @@ import {
 } from './services/dbApi.js';
 import { migrateFromLocalStorage } from './services/migration.js';
 
-function MainApp() {
+function MainApp({ onBackToDashboard }) {
   const [phase, setPhase] = useState('home');
   const [language, setLanguage] = useState('ru');
   const [headerImage, setHeaderImage] = useState(null);
@@ -224,6 +227,7 @@ function MainApp() {
         onLanguageChange={setLanguage}
         headerImage={headerImage}
         onHeaderImageChange={setHeaderImage}
+        onBackToDashboard={onBackToDashboard}
         exportButton={phase === 'reading' && !batch.running && (
           <ExportButton language={language} bookTitle={bookTitle} pageImages={pageImages} />
         )}
@@ -311,6 +315,8 @@ function MainApp() {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(isLoggedIn());
+  const [module, setModule] = useState('dashboard');
+  const [writerProject, setWriterProject] = useState(null);
 
   useEffect(() => {
     const handler = () => setAuthenticated(false);
@@ -319,8 +325,30 @@ export default function App() {
   }, []);
 
   if (!authenticated) {
-    return <LoginPage onLogin={() => setAuthenticated(true)} />;
+    return <LoginPage onLogin={() => { setAuthenticated(true); setModule('dashboard'); }} />;
   }
 
-  return <MainApp />;
+  if (module === 'dashboard') {
+    return <Dashboard onSelect={m => setModule(m)} />;
+  }
+
+  if (module === 'writer') {
+    if (writerProject) {
+      return (
+        <WriterProjectEditor
+          project={writerProject}
+          onBack={() => setWriterProject(null)}
+        />
+      );
+    }
+    return (
+      <WriterHome
+        onOpen={proj => setWriterProject(proj)}
+        onBack={() => setModule('dashboard')}
+      />
+    );
+  }
+
+  // module === 'library' or 'reading'
+  return <MainApp onBackToDashboard={() => setModule('dashboard')} />;
 }
