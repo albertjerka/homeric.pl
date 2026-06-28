@@ -45,6 +45,12 @@ export default function WriterProjectEditor({ project, onBack }) {
     loadChapter(ch);
   }
 
+  function handleToggleAiPanel() {
+    const next = !aiPanelOpen;
+    setAiPanelOpen(next);
+    if (next) setRightPanel('ai');
+  }
+
   function handleRestoreVersion(version) {
     setActiveChapter(prev => ({
       ...prev,
@@ -92,11 +98,10 @@ export default function WriterProjectEditor({ project, onBack }) {
     }
   }
 
-  // Klasy layoutu
   const layoutClass = [
     'writer-editor-layout',
     fullscreen ? 'writer-fullscreen' : '',
-    aiPanelOpen && !fullscreen ? 'ai-open' : '',
+    !fullscreen && aiPanelOpen ? 'ai-open' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -127,7 +132,7 @@ export default function WriterProjectEditor({ project, onBack }) {
             fullscreen={fullscreen}
             onToggleFullscreen={() => setFullscreen(f => !f)}
             aiPanelOpen={aiPanelOpen}
-            onToggleAiPanel={() => setAiPanelOpen(o => !o)}
+            onToggleAiPanel={handleToggleAiPanel}
           />
         ) : (
           <div className="writer-no-chapter">
@@ -139,42 +144,67 @@ export default function WriterProjectEditor({ project, onBack }) {
         )}
       </main>
 
-      {/* ── Prawa kolumna: panel Homer AI (split-screen) ── */}
-      {aiPanelOpen && !fullscreen && (
-        <aside className="writer-ai-column">
-          {/* DEBUG — usuń po weryfikacji */}
-          <div style={{ background: '#1a0', color: '#fff', padding: '4px 12px', fontSize: '0.72rem', flexShrink: 0 }}>
-            PANEL HOMERIC AI OTWARTY ✓
-          </div>
-          <WriterAIPanel
-            selectedText={selectedText}
-            chapterText={activeChapter?.content_text || ''}
-            projectId={project.id}
-            chapterId={activeChapter?.id}
-            onInsert={handleAiInsert}
-            onReplace={handleAiReplace}
-            onNote={handleAiNote}
-          />
-        </aside>
-      )}
+      {/* ── Prawy panel: Słownik / AI / Wersje / Eksport ── */}
+      {!fullscreen && (
+        <aside className={`writer-right${aiPanelOpen ? ' ai-wide' : ''}`}>
 
-      {/* ── Prawa kolumna: Słownik / Wersje / Eksport (gdy AI zamknięty) ── */}
-      {!aiPanelOpen && !fullscreen && (
-        <aside className="writer-right">
+          {/* Zakładki */}
           <div className="right-panel-tabs">
-            <button className={rightPanel === 'linde' ? 'active' : ''} onClick={() => setRightPanel('linde')}>Słownik</button>
-            <button className={rightPanel === 'versions' ? 'active' : ''} onClick={() => setRightPanel('versions')}>Wersje</button>
-            <button className={rightPanel === 'export' ? 'active' : ''} onClick={() => setRightPanel('export')}>Eksport</button>
+            <button
+              className={rightPanel === 'linde' ? 'active' : ''}
+              onClick={() => { setRightPanel('linde'); setAiPanelOpen(false); }}
+            >
+              Słownik
+            </button>
+            <button
+              className={`right-tab-ai${rightPanel === 'ai' ? ' active' : ''}`}
+              onClick={() => { setRightPanel('ai'); setAiPanelOpen(true); }}
+            >
+              Η AI
+            </button>
+            <button
+              className={rightPanel === 'versions' ? 'active' : ''}
+              onClick={() => { setRightPanel('versions'); setAiPanelOpen(false); }}
+            >
+              Wersje
+            </button>
+            <button
+              className={rightPanel === 'export' ? 'active' : ''}
+              onClick={() => { setRightPanel('export'); setAiPanelOpen(false); }}
+            >
+              Eksport
+            </button>
           </div>
 
+          {/* Zawartość zakładek */}
           {rightPanel === 'linde' && (
             <LindePanel
               onInsertQuote={text => window.dispatchEvent(new CustomEvent('writer:insert', { detail: { text, mode: 'append' } }))}
             />
           )}
+
+          {rightPanel === 'ai' && (
+            <div className="ai-panel-wrapper">
+              <div className="ai-panel-header">
+                <span className="ai-panel-title">Homeric AI — Asystent Pisarza</span>
+                <button className="btn-ghost-sm" onClick={() => { setRightPanel('linde'); setAiPanelOpen(false); }}>✕</button>
+              </div>
+              <WriterAIPanel
+                selectedText={selectedText}
+                chapterText={activeChapter?.content_text || ''}
+                projectId={project.id}
+                chapterId={activeChapter?.id}
+                onInsert={handleAiInsert}
+                onReplace={handleAiReplace}
+                onNote={handleAiNote}
+              />
+            </div>
+          )}
+
           {rightPanel === 'versions' && (
             <ChapterVersions chapter={activeChapter} onRestore={handleRestoreVersion} />
           )}
+
           {rightPanel === 'export' && (
             <div className="export-panel">
               <div className="panel-title">Eksport książki</div>

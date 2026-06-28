@@ -138,10 +138,13 @@ export default function WriterChapterEditor({ chapter, onWordCountChange, fullsc
           {onToggleAiPanel && (
             <button
               className={`btn-homer-ai${aiPanelOpen ? ' active' : ''}`}
-              onClick={onToggleAiPanel}
+              onClick={() => {
+                console.log('Homeric AI toggle', aiPanelOpen);
+                onToggleAiPanel();
+              }}
               title="Otwórz / zamknij panel Homer AI"
             >
-              Η Homer AI
+              {aiPanelOpen ? '✓ Homeric AI otwarty' : 'Η Homeric AI'}
             </button>
           )}
           <button
