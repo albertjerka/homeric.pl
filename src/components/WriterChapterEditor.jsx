@@ -7,7 +7,7 @@ import { updateChapter } from '../services/writerApi.js';
 
 const AUTOSAVE_DELAY = 3000;
 
-export default function WriterChapterEditor({ chapter, onWordCountChange, fullscreen, onToggleFullscreen }) {
+export default function WriterChapterEditor({ chapter, onWordCountChange, fullscreen, onToggleFullscreen, aiPanelOpen, onToggleAiPanel }) {
   const [title, setTitle] = useState(chapter.title);
   const [notes, setNotes] = useState(chapter.notes || '');
   const [showNotes, setShowNotes] = useState(false);
@@ -135,6 +135,15 @@ export default function WriterChapterEditor({ chapter, onWordCountChange, fullsc
           <span className="word-count">{wordCount.toLocaleString('pl-PL')} słów</span>
           <span className={`save-status save-${saveStatus}`}>{statusLabel[saveStatus]}</span>
           <button className="btn-ghost-sm" onClick={saveNow}>Zapisz wersję</button>
+          {onToggleAiPanel && (
+            <button
+              className={`btn-homer-ai${aiPanelOpen ? ' active' : ''}`}
+              onClick={onToggleAiPanel}
+              title="Otwórz / zamknij panel Homer AI"
+            >
+              Η Homer AI
+            </button>
+          )}
           <button
             className={`btn-ghost-sm${showNotes ? ' active-notes' : ''}`}
             onClick={() => setShowNotes(s => !s)}

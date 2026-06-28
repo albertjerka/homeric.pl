@@ -17,7 +17,6 @@ export default function WriterProjectEditor({ project, onBack }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const pollingRef = useRef(null);
-  const editorInsertRef = useRef(null);
 
   useEffect(() => {
     getChapters(project.id).then(chs => {
@@ -55,15 +54,12 @@ export default function WriterProjectEditor({ project, onBack }) {
     }));
   }
 
-  // Insert/replace from AI panel into editor
   function handleAiInsert(text) {
     window.dispatchEvent(new CustomEvent('writer:insert', { detail: { text, mode: 'append' } }));
   }
-
   function handleAiReplace(text) {
     window.dispatchEvent(new CustomEvent('writer:insert', { detail: { text, mode: 'replace' } }));
   }
-
   async function handleAiNote(text) {
     if (!activeChapter) return;
     const newNotes = `${activeChapter.notes || ''}\n\n[Homer AI]\n${text}`.trim();
@@ -96,6 +92,7 @@ export default function WriterProjectEditor({ project, onBack }) {
     }
   }
 
+  // Klasy layoutu
   const layoutClass = [
     'writer-editor-layout',
     fullscreen ? 'writer-fullscreen' : '',
@@ -104,6 +101,8 @@ export default function WriterProjectEditor({ project, onBack }) {
 
   return (
     <div className={layoutClass}>
+
+      {/* ── Lewy sidebar ── */}
       {!fullscreen && (
         <WriterSidebar
           project={project}
@@ -119,33 +118,16 @@ export default function WriterProjectEditor({ project, onBack }) {
         />
       )}
 
+      {/* ── Środek: edytor rozdziału ── */}
       <main className="writer-main">
-        {fullscreen && (
-          <div className="fullscreen-topbar">
-            <button className="btn-ghost-sm" onClick={() => setFullscreen(false)}>⊡ Wyjdź</button>
-            <span className="fullscreen-title">{project.title}</span>
-          </div>
-        )}
-
-        {!fullscreen && (
-          <div className="writer-toolbar">
-            <button
-              className={`writer-ai-toggle${aiPanelOpen ? ' active' : ''}`}
-              onClick={() => setAiPanelOpen(o => !o)}
-              title="Otwórz / zamknij panel Homer AI"
-            >
-              <span style={{ fontFamily: 'serif', fontStyle: 'italic' }}>Η</span>
-              {aiPanelOpen ? ' Zamknij AI' : ' Homer AI'}
-            </button>
-          </div>
-        )}
-
         {activeChapter ? (
           <WriterChapterEditor
             key={activeChapter.id}
             chapter={activeChapter}
             fullscreen={fullscreen}
             onToggleFullscreen={() => setFullscreen(f => !f)}
+            aiPanelOpen={aiPanelOpen}
+            onToggleAiPanel={() => setAiPanelOpen(o => !o)}
           />
         ) : (
           <div className="writer-no-chapter">
@@ -157,9 +139,13 @@ export default function WriterProjectEditor({ project, onBack }) {
         )}
       </main>
 
-      {/* Panel Homer AI jako prawa kolumna */}
+      {/* ── Prawa kolumna: panel Homer AI (split-screen) ── */}
       {aiPanelOpen && !fullscreen && (
         <aside className="writer-ai-column">
+          {/* DEBUG — usuń po weryfikacji */}
+          <div style={{ background: '#1a0', color: '#fff', padding: '4px 12px', fontSize: '0.72rem', flexShrink: 0 }}>
+            PANEL HOMERIC AI OTWARTY ✓
+          </div>
           <WriterAIPanel
             selectedText={selectedText}
             chapterText={activeChapter?.content_text || ''}
@@ -172,7 +158,7 @@ export default function WriterProjectEditor({ project, onBack }) {
         </aside>
       )}
 
-      {/* Prawy panel z Linde/Wersje/Eksport — gdy AI nie jest otwarty */}
+      {/* ── Prawa kolumna: Słownik / Wersje / Eksport (gdy AI zamknięty) ── */}
       {!aiPanelOpen && !fullscreen && (
         <aside className="writer-right">
           <div className="right-panel-tabs">
