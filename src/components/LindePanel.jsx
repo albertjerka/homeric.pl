@@ -164,16 +164,30 @@ export default function LindePanel({ onInsertQuote }) {
 
       {results !== null && results.length === 0 && (
         <div className="linde-empty">
-          <p>Brak wyników dla „{query}"</p>
+          <p>Nie znaleziono hasła dla „{query}".</p>
+          <p className="linde-empty-hint">Linde używa staropolskiej pisowni (np. BESTYA zamiast bestia). Spróbuj wariantu pisowni lub szukaj online.</p>
           <button className="btn-ghost-sm" onClick={openOnline}>Szukaj online →</button>
         </div>
       )}
 
       {results && results.length > 0 && (
         <div className="linde-results">
+          {/* Czy jest dokładne trafienie? */}
+          {!results.some(r => r.match_type === 'exact') && (
+            <div className="linde-no-exact">
+              Nie znaleziono dokładnego hasła. Poniżej podobne trafienia:
+            </div>
+          )}
           {results.map(entry => (
-            <div key={entry.id} className="linde-entry">
-              <div className="linde-headword">{entry.headword}</div>
+            <div key={entry.id} className={`linde-entry linde-entry-${entry.match_type || 'body'}`}>
+              <div className="linde-entry-head">
+                <span className="linde-headword">{entry.headword}</span>
+                <span className={`linde-match-badge linde-match-${entry.match_type || 'body'}`}>
+                  {entry.match_type === 'exact' ? 'dokładne' :
+                   entry.match_type === 'prefix' ? 'prefiks' :
+                   entry.match_type === 'headword' ? 'hasło' : 'treść'}
+                </span>
+              </div>
               {(entry.volume || entry.page) && (
                 <div className="linde-meta">
                   {entry.volume && <span>Tom {entry.volume}</span>}
@@ -250,9 +264,26 @@ export default function LindePanel({ onInsertQuote }) {
 
       {aiResult && (
         <div className="linde-ai-result">
+          {/* Informacja o wyszukiwaniu */}
+          <div className="linde-ai-search-info">
+            {aiResult.searchTerms?.length > 0 && (
+              <span className="linde-ai-search-terms">
+                Wyszukano: {aiResult.searchTerms.join(', ')}
+              </span>
+            )}
+            {aiResult.resultsCount != null && (
+              <span className="linde-ai-results-count">
+                {aiResult.resultsCount > 0
+                  ? `${aiResult.resultsCount} haseł z bazy`
+                  : 'Brak haseł w bazie'}
+              </span>
+            )}
+          </div>
+
+          {/* Hasła z bazy — tylko realne trafienia */}
           {aiResult.headwords?.length > 0 && (
             <div className="linde-ai-headwords">
-              <span className="linde-ai-hw-label">Użyte hasła:</span>
+              <span className="linde-ai-hw-label">Hasła z bazy:</span>
               {aiResult.headwords.map(hw => (
                 <button
                   key={hw}
@@ -265,6 +296,7 @@ export default function LindePanel({ onInsertQuote }) {
               ))}
             </div>
           )}
+
           <div className="linde-ai-answer">{aiResult.answer}</div>
           <div className="linde-ai-footer">
             <button

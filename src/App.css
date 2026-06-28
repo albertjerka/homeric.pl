@@ -3975,3 +3975,65 @@ body::before {
   border-style: dashed !important;
   font-style: italic;
 }
+
+/* ─── Linde — ranking & typy trafień ────────────────────────────────────────── */
+
+.linde-no-exact {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.linde-entry-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.linde-match-badge {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.linde-match-exact  { border-color: #4a9c5d; color: #4a9c5d; }
+.linde-match-prefix { border-color: var(--accent-dim, #c9a227); color: var(--accent-dim, #c9a227); }
+.linde-match-headword { border-color: var(--text-muted); color: var(--text-muted); }
+.linde-match-body   { border-color: var(--border); color: var(--text-muted); opacity: 0.7; }
+
+.linde-entry-exact { border-left: 2px solid #4a9c5d; }
+.linde-entry-prefix { border-left: 2px solid var(--accent-dim, #c9a227); }
+
+.linde-empty-hint {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ─── Linde AI — search info ─────────────────────────────────────────────────── */
+
+.linde-ai-search-info {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 5px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.linde-ai-search-terms {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.linde-ai-results-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #4a9c5d;
+}
