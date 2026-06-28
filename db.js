@@ -109,13 +109,15 @@ export async function initDb() {
     );
 
     CREATE TABLE IF NOT EXISTS writer_ai_actions (
-      id           SERIAL PRIMARY KEY,
-      project_id   INTEGER REFERENCES writing_projects(id) ON DELETE SET NULL,
-      chapter_id   INTEGER REFERENCES writing_chapters(id) ON DELETE SET NULL,
-      action_type  TEXT,
-      input_text   TEXT,
-      output_text  TEXT,
-      created_at   TIMESTAMPTZ DEFAULT NOW()
+      id               SERIAL PRIMARY KEY,
+      project_id       INTEGER REFERENCES writing_projects(id) ON DELETE SET NULL,
+      chapter_id       INTEGER REFERENCES writing_chapters(id) ON DELETE SET NULL,
+      action_type      TEXT,
+      input_text       TEXT,
+      output_text      TEXT,
+      image_data       TEXT,
+      image_media_type TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS linde_sources (
@@ -155,6 +157,8 @@ export async function initDb() {
 
   // Additive migrations — safe to run multiple times
   await pool.query(`ALTER TABLE writing_chapters ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE writer_ai_actions ADD COLUMN IF NOT EXISTS image_data TEXT`);
+  await pool.query(`ALTER TABLE writer_ai_actions ADD COLUMN IF NOT EXISTS image_media_type TEXT`);
 
   // pg_trgm for fuzzy Linde search (requires superuser — graceful fallback)
   try {

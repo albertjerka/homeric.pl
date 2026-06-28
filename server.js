@@ -19,7 +19,7 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
   : ['http://localhost:3001', 'http://localhost:5173'];
 
 app.use(cors({ origin: allowedOrigins }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(express.raw({ type: 'application/octet-stream', limit: '300mb' }));
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

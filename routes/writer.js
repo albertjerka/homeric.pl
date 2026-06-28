@@ -332,40 +332,79 @@ ${p.description ? `<p style="color:#666;font-style:italic">${p.description}</p>`
   res.status(400).json({ error: 'Nieznany format. Użyj: txt, html, docx' });
 });
 
-// ─── AI placeholder ───────────────────────────────────────────────────────────
+// ─── Homer AI ────────────────────────────────────────────────────────────────
 
 router.post('/ai', async (req, res) => {
-  const { action_type, selected_text, chapter_context, instruction } = req.body;
-  if (!selected_text && !chapter_context) {
-    return res.status(400).json({ error: 'Brak tekstu do przetworzenia' });
+  const {
+    action_type, selected_text, chapter_context, instruction,
+    image_base64, image_media_type,
+  } = req.body;
+
+  const text = selected_text || chapter_context || '';
+  if (!text.trim() && !image_base64) {
+    return res.status(400).json({ error: 'Brak tekstu ani obrazka do przetworzenia' });
   }
 
-  const prompts = {
-    improve_style: 'Popraw styl poniższego fragmentu. Zachowaj sens, popraw rytm zdania i podnieś jakość literacką.',
-    expand_scene: 'Rozwiń poniższą scenę. Dodaj opisy zmysłowe, emocje postaci i szczegóły miejsca.',
-    archaic_tone: 'Przepisz poniższy fragment na bardziej literacki, lekko archaiczny styl polski. Zachowaj sens, nie dodawaj nowych wydarzeń, popraw rytm zdania i podnieś styl. Nie przesadzaj z archaizmami.',
-    propose_dialogue: 'Na podstawie poniższego kontekstu zaproponuj naturalny dialog między postaciami.',
-    summarize_chapter: 'Napisz zwięzłe streszczenie poniższego rozdziału w 3-5 zdaniach.',
+  const systemPrompts = {
+    improve_style: 'Popraw styl poniższego fragmentu literackiego. Zachowaj sens i narrację, popraw rytm zdań, usuń powtórzenia, podnieś jakość językową. Odpowiedz tylko poprawionym tekstem.',
+    expand_scene: 'Rozwiń poniższą scenę literacką. Dodaj opisy zmysłowe (wzrok, słuch, zapach, dotyk), pogłęb emocje postaci, wprowadź szczegóły miejsca. Nie zmieniaj fabuły. Odpowiedz tylko rozbudowanym tekstem.',
+    archaic_tone: 'Przepisz poniższy fragment na bardziej literacki, lekko archaiczny styl polski. Zachowaj sens i fabułę, popraw rytm zdania, podnieś styl. Nie przesadzaj z archaizmami — tekst ma być czytelny. Odpowiedz tylko przepisanym tekstem.',
+    propose_dialogue: 'Na podstawie poniższego kontekstu literackiego zaproponuj naturalny, dramaturgicznie żywy dialog między postaciami. Dialog ma pasować do stylu i epoki. Odpowiedz tylko dialogiem w formacie scenicznym.',
+    summarize_chapter: 'Napisz literackie, zwięzłe streszczenie poniższego fragmentu w 3–5 zdaniach. Zachowaj atmosferę i kluczowe momenty. Odpowiedz tylko streszczeniem.',
+    custom: instruction || 'Wykonaj poniższe zadanie dotyczące tekstu lub obrazu literackiego. Odpowiedz po polsku.',
   };
 
-  const systemPrompt = prompts[action_type] || instruction || 'Pomóż z poniższym tekstem literackim.';
-  const text = selected_text || chapter_context;
+  const system = systemPrompts[action_type] || systemPrompts.custom;
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const userContent = [];
+
+    if (image_base64) {
+      userContent.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: image_media_type || 'image/jpeg',
+          data: image_base64,
+        },
+      });
+    }
+
+    if (text.trim()) {
+      const label = action_type === 'custom' ? 'KONTEKST' : 'TEKST';
+      userContent.push({ type: 'text', text: `${label}:\n${text}` });
+    } else if (image_base64 && action_type === 'custom') {
+      userContent.push({ type: 'text', text: instruction || 'Opisz i zinterpretuj ten obraz w kontekście literackim.' });
+    }
+
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2048,
-      system: 'Jesteś asystentem pisarskim specjalizującym się w literaturze polskiej. Odpowiadasz tylko przetworzonym tekstem, bez komentarzy.',
-      messages: [{ role: 'user', content: `${systemPrompt}\n\nTEKST:\n${text}` }],
+      system: `Jesteś Homer AI — elitarnym asystentem pisarskim specjalizującym się w literaturze polskiej, historycznej i klasycznej. ${system}`,
+      messages: [{ role: 'user', content: userContent }],
     });
+
+    const output = message.content[0].text;
+
     await pool.query(
-      `INSERT INTO writer_ai_actions (project_id, chapter_id, action_type, input_text, output_text)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [req.body.project_id || null, req.body.chapter_id || null, action_type, text, message.content[0].text]
+      `INSERT INTO writer_ai_actions
+         (project_id, chapter_id, action_type, input_text, output_text, image_data, image_media_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        req.body.project_id || null,
+        req.body.chapter_id || null,
+        action_type,
+        text.slice(0, 2000),
+        output,
+        image_base64 || null,
+        image_media_type || null,
+      ]
     );
-    res.json({ result: message.content[0].text });
+
+    res.json({ result: output });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

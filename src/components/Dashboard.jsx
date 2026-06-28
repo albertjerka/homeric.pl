@@ -1,28 +1,4 @@
 export default function Dashboard({ onSelect }) {
-  const tiles = [
-    {
-      key: 'library',
-      icon: '📚',
-      title: 'Moja Biblioteka',
-      desc: 'Twoje książki, PDF-y, tłumaczenia i słowniczki.',
-      btn: 'Otwórz bibliotekę',
-    },
-    {
-      key: 'reading',
-      icon: '🏛',
-      title: 'Czytaj w oryginale',
-      desc: 'Tłumacz stronę po stronie, zdanie po zdaniu, ucz się języka z literatury.',
-      btn: 'Zacznij czytać',
-    },
-    {
-      key: 'writer',
-      icon: '✒',
-      title: 'Pisarz',
-      desc: 'Twórz własną powieść, sceny, rozdziały i styl — z pomocą AI oraz Słownika Lindego.',
-      btn: 'Rozpocznij pisanie',
-    },
-  ];
-
   return (
     <div className="dashboard">
       <div className="dashboard-header">
@@ -35,15 +11,20 @@ export default function Dashboard({ onSelect }) {
         </div>
       </div>
 
-      <div className="dashboard-tiles">
-        {tiles.map(t => (
-          <div key={t.key} className="dashboard-tile" onClick={() => onSelect(t.key)}>
-            <div className="tile-icon">{t.icon}</div>
-            <h2>{t.title}</h2>
-            <p>{t.desc}</p>
-            <button className="tile-btn">{t.btn}</button>
-          </div>
-        ))}
+      <div className="dashboard-tiles dashboard-tiles-2">
+        <div className="dashboard-tile" onClick={() => onSelect('library')}>
+          <div className="tile-icon">📚</div>
+          <h2>Moja Biblioteka</h2>
+          <p>Twoje książki PDF do czytania i tłumaczenia oraz pisane przez ciebie powieści i rozdziały.</p>
+          <button className="tile-btn">Otwórz bibliotekę</button>
+        </div>
+
+        <div className="dashboard-tile" onClick={() => onSelect('writer')}>
+          <div className="tile-icon">✒</div>
+          <h2>Pisarz</h2>
+          <p>Twórz własną powieść, sceny, rozdziały i styl — z pomocą Homer AI oraz Słownika Lindego.</p>
+          <button className="tile-btn">Rozpocznij pisanie</button>
+        </div>
       </div>
     </div>
   );

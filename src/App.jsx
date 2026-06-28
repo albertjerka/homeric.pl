@@ -20,7 +20,7 @@ import {
 } from './services/dbApi.js';
 import { migrateFromLocalStorage } from './services/migration.js';
 
-function MainApp({ onBackToDashboard }) {
+function MainApp({ onBackToDashboard, onOpenWriterProject }) {
   const [phase, setPhase] = useState('home');
   const [language, setLanguage] = useState('ru');
   const [headerImage, setHeaderImage] = useState(null);
@@ -242,7 +242,7 @@ function MainApp({ onBackToDashboard }) {
       {phase === 'home' && (
         <div className="home-screen">
           {!loadingLibrary && (
-            <Library books={books} onOpen={handleOpenBook} onUploadAndOpen={handleUploadAndOpen} onDelete={handleDeleteBook} />
+            <Library books={books} onOpen={handleOpenBook} onUploadAndOpen={handleUploadAndOpen} onDelete={handleDeleteBook} onOpenWriterProject={onOpenWriterProject} />
           )}
           <div className="home-upload-section">
             <PDFUpload onLoad={handleLoad} language={language} />
@@ -349,6 +349,11 @@ export default function App() {
     );
   }
 
-  // module === 'library' or 'reading'
-  return <MainApp onBackToDashboard={() => setModule('dashboard')} />;
+  // module === 'library'
+  return (
+    <MainApp
+      onBackToDashboard={() => setModule('dashboard')}
+      onOpenWriterProject={proj => { setWriterProject(proj); setModule('writer'); }}
+    />
+  );
 }
