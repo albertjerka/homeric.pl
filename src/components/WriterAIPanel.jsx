@@ -149,7 +149,7 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
           className="homer-prompt-input"
           value={customPrompt}
           onChange={e => setCustomPrompt(e.target.value)}
-          placeholder="Napisz instrukcję dla Homer AI po polsku… np. „Opisz tę scenę widzianą oczami dziecka" lub „Znajdź archaizmy i zaproponuj nowoczesne odpowiedniki""
+          placeholder="Napisz instrukcję dla Homer AI po polsku... np. Opisz tę scenę widzianą oczami dziecka - lub: Znajdź archaizmy i zaproponuj nowoczesne odpowiedniki"
           rows={4}
         />
 
