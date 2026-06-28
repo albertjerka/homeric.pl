@@ -183,23 +183,26 @@ export default function WriterProjectEditor({ project, onBack }) {
             />
           )}
 
-          {rightPanel === 'ai' && (
-            <div className="ai-panel-wrapper">
-              <div className="ai-panel-header">
-                <span className="ai-panel-title">Homeric AI — Asystent Pisarza</span>
-                <button className="btn-ghost-sm" onClick={() => { setRightPanel('linde'); setAiPanelOpen(false); }}>✕</button>
-              </div>
-              <WriterAIPanel
-                selectedText={selectedText}
-                chapterText={activeChapter?.content_text || ''}
-                projectId={project.id}
-                chapterId={activeChapter?.id}
-                onInsert={handleAiInsert}
-                onReplace={handleAiReplace}
-                onNote={handleAiNote}
-              />
+          {/* Panel AI — zawsze montowany gdy jest rozdział, hidden gdy inna zakładka.
+              Dzięki temu historia odpowiedzi nie znika przy zmianie zakładki. */}
+          <div
+            className="ai-panel-wrapper"
+            style={{ display: rightPanel === 'ai' ? 'flex' : 'none' }}
+          >
+            <div className="ai-panel-header">
+              <span className="ai-panel-title">Homeric AI — Asystent Pisarza</span>
+              <button className="btn-ghost-sm" onClick={() => { setRightPanel('linde'); setAiPanelOpen(false); }}>✕</button>
             </div>
-          )}
+            <WriterAIPanel
+              selectedText={selectedText}
+              chapterText={activeChapter?.content_text || ''}
+              projectId={project.id}
+              chapterId={activeChapter?.id}
+              onInsert={handleAiInsert}
+              onReplace={handleAiReplace}
+              onNote={handleAiNote}
+            />
+          </div>
 
           {rightPanel === 'versions' && (
             <ChapterVersions chapter={activeChapter} onRestore={handleRestoreVersion} />

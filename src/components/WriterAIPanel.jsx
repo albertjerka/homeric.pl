@@ -1,82 +1,107 @@
 import { useState, useRef, useEffect } from 'react';
-import { aiAction, getAiMessages } from '../services/writerApi.js';
+import { aiAction } from '../services/writerApi.js';
 
 const MODES = [
-  { key: 'improve_style',    label: 'Popraw styl',       icon: '✦' },
-  { key: 'archaic_tone',     label: 'Archaiczne',         icon: '⸸' },
-  { key: 'ornate',           label: 'Ozdobne',            icon: '❧' },
-  { key: 'epic_tone',        label: 'Ton epicki',         icon: '⚔' },
-  { key: 'expand_scene',     label: 'Rozwiń scenę',       icon: '⟳' },
-  { key: 'propose_dialogue', label: 'Dialog',             icon: '❝' },
-  { key: 'propose_variants', label: 'Warianty zdania',    icon: '≡' },
-  { key: 'linde_words',      label: 'Słowa Lindego',      icon: 'Λ' },
+  { key: 'improve_style',    label: 'Popraw styl',    icon: '✦' },
+  { key: 'archaic_tone',     label: 'Archaiczne',      icon: '⸸' },
+  { key: 'ornate',           label: 'Ozdobne',         icon: '❧' },
+  { key: 'epic_tone',        label: 'Epicki',          icon: '⚔' },
+  { key: 'expand_scene',     label: 'Rozwiń',          icon: '⟳' },
+  { key: 'propose_dialogue', label: 'Dialog',          icon: '❝' },
+  { key: 'propose_variants', label: 'Warianty',        icon: '≡' },
+  { key: 'linde_words',      label: 'Linde',           icon: 'Λ' },
 ];
 
 function toBase64(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
   });
 }
 
-function MessageCard({ msg, onInsert, onReplace, onNote }) {
-  const structured = msg.structured;
-  const [copiedIdx, setCopiedIdx] = useState(null);
+function VariantCard({ variant, idx, onInsert, onReplace, onNote }) {
+  const [copied, setCopied] = useState(false);
 
-  function copy(text, idx) {
-    navigator.clipboard?.writeText(text).catch(() => {});
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 1500);
+  function copy() {
+    navigator.clipboard?.writeText(variant.text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
-  const variants = structured?.variants || [{ label: 'Odpowiedź', text: msg.raw }];
-  const lindeWords = structured?.linde_inspirations || msg.linde_words || [];
-  const editorNote = structured?.editor_note || '';
-  const modeName = MODES.find(m => m.key === msg.mode)?.label || msg.mode || '';
-
   return (
-    <div className="ai-msg-card">
-      <div className="ai-msg-header">
-        <span className="ai-msg-mode">{modeName}</span>
-        {msg.created_at && (
-          <span className="ai-msg-time">
-            {new Date(msg.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        )}
+    <div className="ai-variant-card">
+      <div className="ai-variant-card-label">{variant.label}</div>
+      <div className="ai-variant-card-text">{variant.text}</div>
+      <div className="ai-variant-card-actions">
+        <button className="btn-ai-action" onClick={() => onInsert?.(variant.text)}>Wstaw</button>
+        <button className="btn-ai-action" onClick={() => onReplace?.(variant.text)}>Zastąp</button>
+        <button className="btn-ai-action" onClick={() => onNote?.(variant.text)}>Notatka</button>
+        <button className="btn-ai-action copy" onClick={copy}>{copied ? '✓' : 'Kopiuj'}</button>
+      </div>
+    </div>
+  );
+}
+
+function LindeSection({ terms }) {
+  const [expanded, setExpanded] = useState(null);
+  if (!terms?.length) return null;
+  return (
+    <div className="ai-linde-section">
+      <div className="ai-linde-section-title">Materiał ze Słownika Lindego ({terms.length} haseł)</div>
+      <div className="ai-linde-tags">
+        {terms.map((t, i) => (
+          <button
+            key={t.headword}
+            className={`ai-linde-hw-btn${expanded === i ? ' open' : ''}`}
+            onClick={() => setExpanded(expanded === i ? null : i)}
+          >
+            {t.headword}
+          </button>
+        ))}
+      </div>
+      {expanded !== null && terms[expanded] && (
+        <div className="ai-linde-body">
+          <div className="ai-linde-body-hw">{terms[expanded].headword} <span className="ai-linde-body-src">({terms[expanded].source})</span></div>
+          <div className="ai-linde-body-text">{terms[expanded].body}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({ msg, onInsert, onReplace, onNote }) {
+  const modeName = MODES.find(m => m.key === msg.mode)?.label || msg.mode || '';
+  return (
+    <div className="ai-msg-bubble">
+      <div className="ai-msg-bubble-meta">
+        <span className="ai-msg-bubble-mode">{modeName}</span>
+        {msg.prompt && <span className="ai-msg-bubble-prompt">„{msg.prompt.slice(0, 80)}{msg.prompt.length > 80 ? '…' : ''}"</span>}
+        <span className="ai-msg-bubble-time">
+          {new Date(msg.ts).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+        </span>
       </div>
 
-      {msg.prompt && (
-        <div className="ai-msg-prompt">„{msg.prompt.slice(0, 120)}{msg.prompt.length > 120 ? '…' : ''}"</div>
-      )}
+      {/* Linde materiał */}
+      <LindeSection terms={msg.lindeTerms} />
 
-      {lindeWords.length > 0 && (
-        <div className="ai-msg-linde-words">
-          <span className="ai-msg-linde-label">Linde:</span>
-          {lindeWords.slice(0, 8).map(w => (
-            <span key={w} className="ai-msg-linde-tag">{w}</span>
-          ))}
-        </div>
-      )}
-
-      {variants.map((v, idx) => (
-        <div key={idx} className="ai-variant">
-          <div className="ai-variant-label">{v.label}</div>
-          <div className="ai-variant-text">{v.text}</div>
-          <div className="ai-variant-actions">
-            <button className="btn-ghost-sm" onClick={() => onInsert?.(v.text)}>Wstaw</button>
-            <button className="btn-ghost-sm" onClick={() => onReplace?.(v.text)}>Zastąp</button>
-            <button className="btn-ghost-sm" onClick={() => onNote?.(v.text)}>Notatka</button>
-            <button className="btn-ghost-sm" onClick={() => copy(v.text, idx)}>
-              {copiedIdx === idx ? '✓' : 'Kopiuj'}
-            </button>
-          </div>
-        </div>
+      {/* Warianty w kartach */}
+      {(msg.variants || []).map((v, i) => (
+        <VariantCard key={i} variant={v} idx={i} onInsert={onInsert} onReplace={onReplace} onNote={onNote} />
       ))}
 
-      {editorNote && (
-        <div className="ai-editor-note">📝 {editorNote}</div>
+      {/* Notatka redaktora */}
+      {msg.editorNote && (
+        <div className="ai-editor-note">📝 {msg.editorNote}</div>
+      )}
+
+      {/* Słowa zainspirowane Linde */}
+      {msg.lindeInspirations?.length > 0 && (
+        <div className="ai-linde-inspirations">
+          <span className="ai-linde-insp-label">Sugestie słownikowe:</span>
+          {msg.lindeInspirations.map(w => <span key={w} className="ai-linde-insp-tag">{w}</span>)}
+        </div>
       )}
     </div>
   );
@@ -90,32 +115,20 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [messages, setMessages] = useState([]); // historia
+  const [messages, setMessages] = useState([]);
   const imageRef = useRef();
   const historyRef = useRef();
+  const prevChapterId = useRef(chapterId);
 
-  // Załaduj historię przy otwarciu rozdziału
+  // Gdy zmienia się rozdział, wyczyść historię widoku (nie DB)
   useEffect(() => {
-    if (!chapterId) return;
-    getAiMessages(chapterId).then(rows => {
-      const parsed = rows.map(row => {
-        let structured = null;
-        try { structured = JSON.parse(row.output_text); } catch {}
-        return {
-          id: row.id,
-          mode: row.mode,
-          prompt: row.prompt,
-          linde_words: JSON.parse(row.linde_terms_json || '[]'),
-          structured,
-          raw: row.output_text,
-          created_at: row.created_at,
-        };
-      });
-      setMessages(parsed.reverse()); // najstarsze pierwsze
-    }).catch(() => {});
+    if (chapterId !== prevChapterId.current) {
+      setMessages([]);
+      prevChapterId.current = chapterId;
+    }
   }, [chapterId]);
 
-  // Scroll do końca po nowej odpowiedzi
+  // Auto-scroll do ostatniej odpowiedzi
   useEffect(() => {
     if (historyRef.current) {
       historyRef.current.scrollTop = historyRef.current.scrollHeight;
@@ -124,48 +137,52 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const text = selectedText || chapterText;
-    if (!text?.trim() && !image && !prompt.trim()) {
-      setError('Zaznacz fragment, wpisz prompt lub wgraj obraz.');
+    const text = selectedText?.trim() || chapterText?.trim();
+    if (!text && !image && !prompt.trim()) {
+      setError('Zaznacz fragment tekstu, wpisz prompt lub wgraj obraz.');
       return;
     }
     setLoading(true);
     setError('');
+
+    // Historia dla kontynuacji — ostatnie 3 wymiany
+    const history = messages.slice(-3).flatMap(msg => [
+      { role: 'user', content: msg.prompt || msg.inputText || '' },
+      { role: 'assistant', content: (msg.variants || []).map(v => `${v.label}:\n${v.text}`).join('\n\n') },
+    ]);
+
     try {
       const payload = {
         mode,
-        prompt: prompt || undefined,
-        selected_text: selectedText || undefined,
-        chapter_context: selectedText ? undefined : (chapterText || undefined),
+        prompt: prompt.trim() || undefined,
+        selected_text: selectedText?.trim() || undefined,
+        chapter_context: !selectedText?.trim() ? (chapterText?.slice(0, 3000) || undefined) : undefined,
         scene_words: sceneWords,
         use_linde: true,
         project_id: projectId,
         chapter_id: chapterId,
+        history,
       };
       if (image) {
         payload.image_base64 = image.base64;
         payload.image_media_type = image.type;
       }
-      const r = await aiAction(payload);
 
-      let structured = r.structured;
-      if (!structured) {
-        try { structured = JSON.parse(r.result); } catch { structured = null; }
-      }
-      if (!structured) {
-        structured = { variants: [{ label: 'Odpowiedź', text: r.result }], linde_inspirations: [], editor_note: '' };
-      }
+      const r = await aiAction(payload);
 
       const newMsg = {
         id: Date.now(),
         mode,
-        prompt,
-        linde_words: (r.lindeTerms || []).map(t => t.headword),
-        structured,
-        raw: r.result,
-        created_at: new Date().toISOString(),
+        prompt: prompt.trim(),
+        inputText: selectedText?.trim() || '',
+        variants: r.structured?.variants || [],
+        lindeTerms: r.lindeTerms || [],
+        lindeInspirations: r.structured?.linde_inspirations || [],
+        editorNote: r.structured?.editor_note || '',
+        ts: Date.now(),
       };
       setMessages(prev => [...prev, newMsg]);
+      setPrompt('');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -195,22 +212,8 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
     }
   }
 
-  function removeSceneWord(w) {
-    setSceneWords(prev => prev.filter(x => x !== w));
-  }
-
   return (
     <div className="homer-ai-full">
-      {/* Nagłówek */}
-      <div className="homer-ai-full-header">
-        <div className="homer-ai-logo">
-          <span className="homer-ai-symbol">Η</span>
-          <div>
-            <div className="homer-ai-name">Homer AI</div>
-            <div className="homer-ai-sub">Laboratorium stylu</div>
-          </div>
-        </div>
-      </div>
 
       {/* Tryby */}
       <div className="ai-mode-grid">
@@ -227,23 +230,25 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
       </div>
 
       {/* Zaznaczony tekst */}
-      {selectedText ? (
-        <div className="ai-selection-preview">
-          <span className="ai-selection-label">Zaznaczono:</span>
-          <span className="ai-selection-text">{selectedText.slice(0, 140)}{selectedText.length > 140 ? '…' : ''}</span>
-        </div>
-      ) : (
-        <div className="ai-no-selection">Brak zaznaczenia — AI użyje całego rozdziału.</div>
-      )}
+      <div className="ai-context-bar">
+        {selectedText ? (
+          <>
+            <span className="ai-context-label">Zaznaczono:</span>
+            <span className="ai-context-text">„{selectedText.slice(0, 120)}{selectedText.length > 120 ? '…' : ''}„</span>
+          </>
+        ) : (
+          <span className="ai-context-none">Brak zaznaczenia — AI użyje treści rozdziału.</span>
+        )}
+      </div>
 
       {/* Słowa do sceny */}
       <div className="ai-scene-words-section">
-        <div className="ai-scene-words-label">Słowa do sceny</div>
+        <span className="ai-scene-words-label">Słowa do sceny:</span>
         <div className="ai-scene-words-tags">
           {sceneWords.map(w => (
             <span key={w} className="ai-scene-tag">
               {w}
-              <button onClick={() => removeSceneWord(w)}>✕</button>
+              <button onClick={() => setSceneWords(prev => prev.filter(x => x !== w))}>✕</button>
             </span>
           ))}
           <input
@@ -251,18 +256,18 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
             value={wordInput}
             onChange={e => setWordInput(e.target.value)}
             onKeyDown={addSceneWord}
-            placeholder="wpisz słowo + Enter…"
+            placeholder="słowo + Enter"
           />
         </div>
       </div>
 
-      {/* Prompt i submit */}
+      {/* Prompt */}
       <form className="ai-prompt-form" onSubmit={handleSubmit}>
         <textarea
           className="ai-prompt-textarea"
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          placeholder="Opcjonalny prompt — dodatkowa instrukcja dla Homer AI…"
+          placeholder={messages.length > 0 ? 'Kontynuuj rozmowę lub wpisz nowy prompt…' : 'Opcjonalna instrukcja dla Homer AI…'}
           rows={3}
         />
         <div className="ai-prompt-row">
@@ -276,27 +281,31 @@ export default function WriterAIPanel({ selectedText, chapterText, projectId, ch
               <button type="button" onClick={removeImage}>✕</button>
             </div>
           )}
-          <button type="submit" className="btn-primary" disabled={loading} style={{ marginLeft: 'auto' }}>
-            {loading ? 'Pisze…' : 'Wyślij →'}
+          <button type="submit" className="btn-homer-send" disabled={loading}>
+            {loading ? 'Pisze…' : (messages.length > 0 ? 'Kontynuuj →' : 'Wyślij →')}
           </button>
         </div>
       </form>
 
-      {error && <div className="ai-error" style={{ margin: '0 12px 8px' }}>{error}</div>}
+      {error && <div className="ai-error-bar">{error}</div>}
 
       {loading && (
-        <div className="homer-loading" style={{ margin: '0 12px 8px' }}>
-          <span className="homer-loading-dot" /> Homer AI pracuje…
+        <div className="ai-loading-bar">
+          <span className="ai-loading-dot" /> Homer AI pracuje…
         </div>
       )}
 
       {/* Historia odpowiedzi */}
       <div className="ai-history" ref={historyRef}>
         {messages.length === 0 && !loading && (
-          <div className="ai-history-empty">Wyniki pojawią się tutaj. Historia nie znika po zmianie promptu.</div>
+          <div className="ai-history-empty">
+            <div className="ai-history-empty-icon">Η</div>
+            <div>Wybierz tryb, zaznacz tekst i wyślij — odpowiedzi będą tu widoczne.</div>
+            <div className="ai-history-empty-sub">Historia nie znika po zmianie zakładki.</div>
+          </div>
         )}
         {messages.map(msg => (
-          <MessageCard
+          <MessageBubble
             key={msg.id}
             msg={msg}
             onInsert={onInsert}

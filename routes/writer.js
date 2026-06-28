@@ -341,28 +341,75 @@ function normPL(s) {
   return r;
 }
 
-async function findDictionaryTerms(text, limit = 20) {
+async function findDictionaryTerms(text, limit = 30) {
+  if (!text?.trim()) return [];
+
+  // Wszystkie słowa ≥3 znaki, znormalizowane, unikalne
   const words = [...new Set(
-    (text || '').toLowerCase()
+    text.toLowerCase()
       .replace(/[^a-ząćęłńóśźż\s]/g, ' ')
       .split(/\s+/)
-      .filter(w => w.length >= 4)
+      .filter(w => w.length >= 3)
       .map(normPL)
-  )].slice(0, 10);
+  )].slice(0, 14);
 
   if (!words.length) return [];
 
-  const conditions = words.map((w, i) => `normalized_headword ILIKE $${i+1}`).join(' OR ');
+  // Prefix match (silniejsze) + substring match (słabsze) dla każdego słowa
+  const parts = [];
+  const params = [];
+  for (const w of words) {
+    parts.push(`(normalized_headword LIKE $${params.length+1} OR normalized_headword LIKE $${params.length+2})`);
+    params.push(`${w}%`);
+    params.push(`%${w}%`);
+  }
+  params.push(limit);
+
   const r = await pool.query(
-    `SELECT headword, body, volume FROM linde_entries WHERE ${conditions}
-     ORDER BY LENGTH(COALESCE(body,'')) DESC LIMIT $${words.length+1}`,
-    [...words.map(w => `%${w}%`), limit]
+    `SELECT DISTINCT ON (headword) headword, body, volume
+     FROM linde_entries
+     WHERE ${parts.join(' OR ')}
+     ORDER BY headword, LENGTH(COALESCE(body,'')) DESC
+     LIMIT $${params.length}`,
+    params
   );
+
   return r.rows.map(e => ({
     headword: e.headword,
     source: `Linde Tom ${e.volume}`,
-    body: (e.body || '').slice(0, 400),
+    body: (e.body || '').slice(0, 350),
   }));
+}
+
+// Parser odpowiedzi AI z formatu tekstowego z separatorami
+function parseAiResponse(raw) {
+  const variants = [];
+  // Szuka wzorca: WARIANT — Etykieta:\ntekst\n (aż do następnego WARIANT lub SŁOWA-LINDE lub UWAGA)
+  const variantRe = /WARIANT\s*[-—]\s*([^\n:]+):?\s*\n([\s\S]*?)(?=\nWARIANT\s*[-—]|\nSŁOWA-LINDE:|\nUWAGA:|$)/gi;
+  let m;
+  while ((m = variantRe.exec(raw)) !== null) {
+    const text = m[2].trim();
+    if (text) variants.push({ label: m[1].trim(), text });
+  }
+
+  const lindeM = raw.match(/SŁOWA-LINDE:\s*([^\n]+)/i);
+  const linde_inspirations = lindeM
+    ? lindeM[1].split(/[,;]/).map(s => s.trim()).filter(Boolean)
+    : [];
+
+  const noteM = raw.match(/UWAGA:\s*([\s\S]+?)(?=\nWARIANT|\nSŁOWA-LINDE|$)/i);
+  const editor_note = noteM ? noteM[1].trim() : '';
+
+  if (!variants.length) {
+    // Fallback: cały tekst jako jedna odpowiedź, wyczyść znaczniki
+    const clean = raw
+      .replace(/SŁOWA-LINDE:[^\n]*/gi, '')
+      .replace(/UWAGA:[^\n]*/gi, '')
+      .trim();
+    variants.push({ label: 'Odpowiedź', text: clean || raw });
+  }
+
+  return { variants, linde_inspirations, editor_note };
 }
 
 const AI_MODES = {
@@ -445,116 +492,137 @@ router.post('/ai', async (req, res) => {
     chapter_id,
     image_base64,
     image_media_type,
-    // legacy compat
-    action_type,
+    history = [],        // [{role:'user'|'assistant', content: string}] — ostatnie wymiany
+    action_type,         // legacy compat
     instruction,
   } = req.body;
 
   const effectiveMode = mode || action_type || 'improve_style';
   const text = selected_text || input_text || chapter_context || '';
 
-  if (!text.trim() && !image_base64) {
-    return res.status(400).json({ error: 'Brak tekstu ani obrazka do przetworzenia.' });
+  if (!text.trim() && !image_base64 && !userPrompt?.trim()) {
+    return res.status(400).json({ error: 'Brak tekstu, promptu ani obrazka do przetworzenia.' });
   }
 
   const modeConfig = AI_MODES[effectiveMode] || AI_MODES.custom;
   const customInstruction = userPrompt || instruction || '';
 
+  // Format odpowiedzi — czytelny dla parsera (NIE JSON)
+  const FORMAT = effectiveMode === 'propose_variants'
+    ? `Odpowiedz DOKŁADNIE w tym formacie (bez żadnych wstępów, komentarzy ani nawiasów klamrowych):
+
+WARIANT — Wersja prosta:
+[tu wpisz tekst]
+
+WARIANT — Wersja literacka:
+[tu wpisz tekst]
+
+WARIANT — Wersja archaizująca:
+[tu wpisz tekst]
+
+WARIANT — Wersja ozdobna:
+[tu wpisz tekst]
+
+WARIANT — Wersja epicka:
+[tu wpisz tekst]
+
+SŁOWA-LINDE: słowo1, słowo2, słowo3
+
+UWAGA: krótka uwaga`
+    : `Odpowiedz DOKŁADNIE w tym formacie (bez żadnych wstępów ani nawiasów klamrowych):
+
+WARIANT — Wersja główna:
+[tu wpisz tekst]
+
+WARIANT — Wersja alternatywna:
+[tu wpisz tekst]
+
+SŁOWA-LINDE: słowo1, słowo2, słowo3
+
+UWAGA: krótka uwaga`;
+
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // Pobierz kontekst ze słownika Lindego
     let lindeTerms = [];
     if (use_linde && text.trim()) {
-      lindeTerms = await findDictionaryTerms(text, 20);
+      lindeTerms = await findDictionaryTerms(text, 25);
     }
 
-    // Zbuduj prompt użytkownika
-    let userTextParts = [];
+    // Kontekst historii rozmowy (ostatnie 3 wymiany)
+    let historyContext = '';
+    const recentHistory = (history || []).slice(-6); // max 3 pary user/assistant
+    if (recentHistory.length > 0) {
+      historyContext = 'HISTORIA ROZMOWY (kontynuuj w tym duchu):\n' +
+        recentHistory.map(h => `${h.role === 'user' ? 'Pisarz' : 'Homeric AI'}: ${String(h.content).slice(0, 400)}`).join('\n\n') +
+        '\n\n---\n\n';
+    }
 
-    if (customInstruction.trim()) {
-      userTextParts.push(`INSTRUKCJA UŻYTKOWNIKA:\n${customInstruction}`);
-    }
-    if (scene_words.length > 0) {
-      userTextParts.push(`SŁOWA DO SCENY (obowiązkowo użyj jako inspiracji):\n${scene_words.join(', ')}`);
-    }
+    // Linde jako materiał stylistyczny
+    let lindeContext = '';
     if (lindeTerms.length > 0) {
-      const lindeSection = lindeTerms
-        .map(t => `HASŁO: ${t.headword} (${t.source})\n${t.body}`)
-        .join('\n\n---\n\n');
-      userTextParts.push(`KONTEKST ZE SŁOWNIKA LINDEGO:\n${lindeSection}`);
-    }
-    if (text.trim()) {
-      userTextParts.push(`TEKST DO OPRACOWANIA:\n${text}`);
+      lindeContext = 'MATERIAŁ ZE SŁOWNIKA LINDEGO (użyj jako inspiracji stylistycznej):\n' +
+        lindeTerms.map(t => `• ${t.headword}: ${t.body.slice(0, 200)}`).join('\n') +
+        '\n\n';
     }
 
-    userTextParts.push(
-      `\nOdpowiedz w JSON (bez markdown, tylko obiekt JSON):\n` +
-      `{"variants":[{"label":"Wersja poprawiona","text":"..."},{"label":"Wersja archaizująca","text":"..."},{"label":"Wersja ozdobna","text":"..."},{"label":"Wersja epicka","text":"..."}],"linde_inspirations":["słowo1","słowo2"],"editor_note":"krótka uwaga"}\n` +
-      `Jeśli tryb nie wymaga wielu wariantów (np. dialog, streszczenie), użyj jednego wariantu z odpowiednim label.`
-    );
-
-    const userContent = [];
-    if (image_base64) {
-      userContent.push({ type: 'image', source: { type: 'base64', media_type: image_media_type || 'image/jpeg', data: image_base64 } });
+    // Słowa do sceny
+    let sceneContext = '';
+    if (scene_words.length > 0) {
+      sceneContext = `SŁOWA DO SCENY (wpleć w tekst): ${scene_words.join(', ')}\n\n`;
     }
-    userContent.push({ type: 'text', text: userTextParts.join('\n\n') });
+
+    const userMessage = [
+      historyContext,
+      lindeContext,
+      sceneContext,
+      customInstruction.trim() ? `INSTRUKCJA: ${customInstruction}\n\n` : '',
+      text.trim() ? `TEKST DO OPRACOWANIA:\n${text}\n\n` : '',
+      FORMAT,
+    ].join('').trim();
+
+    // Buduj tablicę wiadomości dla Claude
+    const claudeMessages = [{ role: 'user', content: image_base64
+      ? [
+          { type: 'image', source: { type: 'base64', media_type: image_media_type || 'image/jpeg', data: image_base64 } },
+          { type: 'text', text: userMessage },
+        ]
+      : userMessage,
+    }];
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
-      system: modeConfig.system,
-      messages: [{ role: 'user', content: userContent }],
+      max_tokens: 3500,
+      system: modeConfig.system + '\n\nWAŻNE: Odpowiadaj TYLKO w podanym formacie z separatorami WARIANT —, SŁOWA-LINDE:, UWAGA:. Nie używaj nawiasów klamrowych ani JSON. Tekst wariantów pisz po polsku, literacko.',
+      messages: claudeMessages,
     });
 
     const rawOutput = message.content[0].text;
+    const structured = parseAiResponse(rawOutput);
 
-    // Spróbuj sparsować jako JSON, fallback do legacy
-    let structured;
+    // Zapisz w bazie
     try {
-      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/);
-      structured = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
-      structured = null;
-    }
+      let sessionR = chapter_id
+        ? await pool.query(`SELECT id FROM writer_ai_sessions WHERE chapter_id=$1 ORDER BY created_at DESC LIMIT 1`, [chapter_id])
+        : { rows: [] };
 
-    if (!structured) {
-      structured = {
-        variants: [{ label: 'Odpowiedź', text: rawOutput }],
-        linde_inspirations: [],
-        editor_note: '',
-      };
-    }
-
-    // Zapisz w nowej tabeli writer_ai_messages
-    let sessionId;
-    try {
-      let sessionR;
-      if (chapter_id) {
+      if (!sessionR.rows.length) {
         sessionR = await pool.query(
-          `SELECT id FROM writer_ai_sessions WHERE chapter_id=$1 ORDER BY created_at DESC LIMIT 1`,
-          [chapter_id]
-        );
-      }
-      if (!sessionR?.rows?.length) {
-        sessionR = await pool.query(
-          `INSERT INTO writer_ai_sessions (project_id, chapter_id, title)
-           VALUES ($1,$2,$3) RETURNING id`,
+          `INSERT INTO writer_ai_sessions (project_id, chapter_id, title) VALUES ($1,$2,$3) RETURNING id`,
           [project_id||null, chapter_id||null, `Sesja AI — ${new Date().toLocaleString('pl-PL')}`]
         );
       }
-      sessionId = sessionR.rows[0].id;
 
       await pool.query(
         `INSERT INTO writer_ai_messages
            (session_id, role, mode, prompt, input_text, output_text, selected_text, linde_terms_json, scene_words_json)
          VALUES ($1,'assistant',$2,$3,$4,$5,$6,$7,$8)`,
         [
-          sessionId, effectiveMode,
+          sessionR.rows[0].id, effectiveMode,
           customInstruction.slice(0, 2000),
           text.slice(0, 2000),
-          JSON.stringify(structured),
+          rawOutput.slice(0, 4000),
           (selected_text || '').slice(0, 1000),
           JSON.stringify(lindeTerms.map(t => t.headword)),
           JSON.stringify(scene_words),
@@ -562,14 +630,13 @@ router.post('/ai', async (req, res) => {
       );
     } catch {}
 
-    // Legacy: też zapisz w writer_ai_actions
     await pool.query(
       `INSERT INTO writer_ai_actions (project_id, chapter_id, action_type, input_text, output_text, image_data, image_media_type)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [project_id||null, chapter_id||null, effectiveMode, text.slice(0,2000), rawOutput, image_base64||null, image_media_type||null]
+      [project_id||null, chapter_id||null, effectiveMode, text.slice(0,2000), rawOutput.slice(0,4000), image_base64||null, image_media_type||null]
     ).catch(() => {});
 
-    res.json({ result: rawOutput, structured, lindeTerms });
+    res.json({ structured, lindeTerms, mode: effectiveMode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

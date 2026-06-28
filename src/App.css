@@ -3329,3 +3329,257 @@ body::before {
   padding: 8px 12px; border-top: 1px solid var(--border);
   line-height: 1.5;
 }
+
+/* ─── Homeric AI — nowe komponenty ──────────────────────────────────────── */
+
+/* Kontekst zaznaczenia */
+.ai-context-bar {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  min-height: 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ai-context-label { color: var(--text-muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; }
+.ai-context-text { color: var(--accent-dim, #c9a227); font-style: italic; line-height: 1.4; }
+.ai-context-none { color: var(--text-muted); font-size: 0.72rem; }
+
+/* Przycisk wyślij */
+.btn-homer-send {
+  margin-left: auto;
+  background: linear-gradient(135deg, #7a5c10 0%, #c9a227 100%);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.btn-homer-send:hover { opacity: 0.88; }
+.btn-homer-send:disabled { opacity: 0.5; cursor: default; }
+
+/* Karta bańka wiadomości */
+.ai-msg-bubble {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-card, #111);
+  margin-bottom: 2px;
+}
+.ai-msg-bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 6px;
+  flex-wrap: wrap;
+}
+.ai-msg-bubble-mode {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-dim, #c9a227);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.ai-msg-bubble-prompt {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-style: italic;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-msg-bubble-time {
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Karty wariantów */
+.ai-variant-card {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+}
+.ai-variant-card-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.ai-variant-card-text {
+  font-size: 0.88rem;
+  line-height: 1.75;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-variant-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.btn-ai-action {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.btn-ai-action:hover { border-color: var(--accent-dim); color: var(--text-primary); }
+.btn-ai-action.copy { margin-left: auto; }
+
+/* Notatka redaktora */
+.ai-editor-note {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  line-height: 1.5;
+}
+
+/* Sekcja Linde */
+.ai-linde-section {
+  padding: 8px 12px 6px;
+  border-top: 1px solid var(--border);
+  background: rgba(201,162,39,0.04);
+}
+.ai-linde-section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent-dim, #c9a227);
+  margin-bottom: 6px;
+}
+.ai-linde-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.ai-linde-hw-btn {
+  background: none;
+  border: 1px solid rgba(201,162,39,0.3);
+  border-radius: 4px;
+  color: var(--accent-dim, #c9a227);
+  font-size: 0.74rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ai-linde-hw-btn:hover, .ai-linde-hw-btn.open {
+  background: rgba(201,162,39,0.1);
+  border-color: var(--accent-dim, #c9a227);
+}
+.ai-linde-body {
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
+}
+.ai-linde-body-hw {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent-dim, #c9a227);
+  margin-bottom: 4px;
+}
+.ai-linde-body-src { font-weight: 400; font-size: 0.65rem; color: var(--text-muted); }
+.ai-linde-body-text {
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+/* Sugestie Linde */
+.ai-linde-inspirations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--border);
+}
+.ai-linde-insp-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.ai-linde-insp-tag {
+  background: rgba(201,162,39,0.08);
+  border: 1px solid rgba(201,162,39,0.2);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  color: var(--accent-dim, #c9a227);
+}
+
+/* Historia — pusty stan */
+.ai-history-empty {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.ai-history-empty-icon {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 2.5rem;
+  color: rgba(201,162,39,0.25);
+  margin-bottom: 12px;
+}
+.ai-history-empty-sub {
+  font-size: 0.72rem;
+  margin-top: 8px;
+  color: rgba(255,255,255,0.2);
+}
+
+/* Loading */
+.ai-loading-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  color: var(--accent-dim, #c9a227);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ai-loading-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent-dim, #c9a227);
+  display: inline-block;
+  animation: aiPulse 1s ease-in-out infinite;
+}
+@keyframes aiPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* Error */
+.ai-error-bar {
+  padding: 6px 14px;
+  font-size: 0.76rem;
+  color: #e57373;
+  background: rgba(229,115,115,0.08);
+  border-bottom: 1px solid rgba(229,115,115,0.2);
+  flex-shrink: 0;
+}
