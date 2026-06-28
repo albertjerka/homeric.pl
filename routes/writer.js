@@ -101,15 +101,14 @@ router.get('/chapters/:id', async (req, res) => {
 });
 
 router.put('/chapters/:id', async (req, res) => {
-  const { title, content_json, content_html, content_text, word_count } = req.body;
+  const { title, content_json, content_html, content_text, word_count, notes, save_version } = req.body;
   await pool.query(
     `UPDATE writing_chapters
-     SET title=$1, content_json=$2, content_html=$3, content_text=$4, word_count=$5, updated_at=NOW()
-     WHERE id=$6 AND project_id IN (SELECT id FROM writing_projects WHERE admin_id=$7)`,
+     SET title=$1, content_json=$2, content_html=$3, content_text=$4, word_count=$5, notes=$6, updated_at=NOW()
+     WHERE id=$7 AND project_id IN (SELECT id FROM writing_projects WHERE admin_id=$8)`,
     [title, content_json || '{}', content_html || '', content_text || '', word_count || 0,
-     req.params.id, req.admin.id]
+     notes || '', req.params.id, req.admin.id]
   );
-  const words = word_count || 0;
   await pool.query(
     `UPDATE writing_projects SET word_count=(
        SELECT COALESCE(SUM(word_count),0) FROM writing_chapters WHERE project_id=writing_projects.id
@@ -117,6 +116,13 @@ router.put('/chapters/:id', async (req, res) => {
      WHERE id=(SELECT project_id FROM writing_chapters WHERE id=$1)`,
     [req.params.id]
   );
+  if (save_version && content_json) {
+    await pool.query(
+      `INSERT INTO chapter_versions (chapter_id, content_json, content_html, content_text, word_count)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [req.params.id, content_json, content_html || '', content_text || '', word_count || 0]
+    );
+  }
   res.json({ ok: true });
 });
 
@@ -209,6 +215,121 @@ router.delete('/places/:id', async (req, res) => {
     [req.params.id, req.admin.id]
   );
   res.json({ ok: true });
+});
+
+// ─── Chapter versions ─────────────────────────────────────────────────────────
+
+router.get('/chapters/:id/versions', async (req, res) => {
+  const r = await pool.query(
+    `SELECT cv.id, cv.word_count, cv.created_at
+     FROM chapter_versions cv
+     JOIN writing_chapters wc ON wc.id = cv.chapter_id
+     JOIN writing_projects wp ON wp.id = wc.project_id
+     WHERE cv.chapter_id = $1 AND wp.admin_id = $2
+     ORDER BY cv.created_at DESC LIMIT 50`,
+    [req.params.id, req.admin.id]
+  );
+  res.json(r.rows);
+});
+
+router.get('/versions/:id', async (req, res) => {
+  const r = await pool.query(
+    `SELECT cv.* FROM chapter_versions cv
+     JOIN writing_chapters wc ON wc.id = cv.chapter_id
+     JOIN writing_projects wp ON wp.id = wc.project_id
+     WHERE cv.id = $1 AND wp.admin_id = $2`,
+    [req.params.id, req.admin.id]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Nie znaleziono wersji' });
+  res.json(r.rows[0]);
+});
+
+router.delete('/versions/:id', async (req, res) => {
+  await pool.query(
+    `DELETE FROM chapter_versions WHERE id=$1
+     AND chapter_id IN (
+       SELECT wc.id FROM writing_chapters wc
+       JOIN writing_projects wp ON wp.id = wc.project_id
+       WHERE wp.admin_id = $2
+     )`,
+    [req.params.id, req.admin.id]
+  );
+  res.json({ ok: true });
+});
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+router.get('/projects/:id/export', async (req, res) => {
+  const proj = await pool.query(
+    'SELECT * FROM writing_projects WHERE id=$1 AND admin_id=$2',
+    [req.params.id, req.admin.id]
+  );
+  if (!proj.rows[0]) return res.status(404).json({ error: 'Nie znaleziono projektu' });
+  const p = proj.rows[0];
+
+  const chapters = await pool.query(
+    'SELECT title, content_text, content_html FROM writing_chapters WHERE project_id=$1 ORDER BY order_index ASC, created_at ASC',
+    [req.params.id]
+  );
+
+  const format = req.query.format || 'txt';
+
+  if (format === 'txt') {
+    let txt = `${p.title}\n${'═'.repeat(p.title.length)}\n\n`;
+    if (p.description) txt += `${p.description}\n\n`;
+    for (const ch of chapters.rows) {
+      txt += `\n── ${ch.title} ──\n\n${ch.content_text || ''}\n`;
+    }
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${p.title.replace(/[^a-z0-9ąćęłńóśźż ]/gi,'_')}.txt"`);
+    return res.send(txt);
+  }
+
+  if (format === 'html') {
+    let html = `<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>${p.title}</title>
+<style>
+  body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 24px;line-height:1.8;color:#1a1a1a}
+  h1{font-size:2em;margin-bottom:.3em} h2{font-size:1.4em;margin:2em 0 .5em;border-bottom:1px solid #ccc;padding-bottom:.3em}
+  p{margin:.7em 0} blockquote{border-left:3px solid #888;padding-left:1em;color:#444;font-style:italic}
+</style></head><body>
+<h1>${p.title}</h1>
+${p.description ? `<p style="color:#666;font-style:italic">${p.description}</p>` : ''}`;
+    for (const ch of chapters.rows) {
+      html += `\n<h2>${ch.title}</h2>\n${ch.content_html || '<p></p>'}`;
+    }
+    html += `\n</body></html>`;
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${p.title.replace(/[^a-z0-9ąćęłńóśźż ]/gi,'_')}.html"`);
+    return res.send(html);
+  }
+
+  if (format === 'docx') {
+    try {
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx');
+      const children = [
+        new Paragraph({ text: p.title, heading: HeadingLevel.TITLE }),
+      ];
+      if (p.description) {
+        children.push(new Paragraph({ children: [new TextRun({ text: p.description, italics: true, color: '666666' })] }));
+      }
+      for (const ch of chapters.rows) {
+        children.push(new Paragraph({ text: ch.title, heading: HeadingLevel.HEADING_1 }));
+        const lines = (ch.content_text || '').split('\n');
+        for (const line of lines) {
+          children.push(new Paragraph({ children: [new TextRun(line)] }));
+        }
+      }
+      const doc = new Document({ sections: [{ children }] });
+      const buf = await Packer.toBuffer(doc);
+      res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.set('Content-Disposition', `attachment; filename="${p.title.replace(/[^a-z0-9ąćęłńóśźż ]/gi,'_')}.docx"`);
+      return res.send(buf);
+    } catch (err) {
+      return res.status(500).json({ error: `DOCX: ${err.message}` });
+    }
+  }
+
+  res.status(400).json({ error: 'Nieznany format. Użyj: txt, html, docx' });
 });
 
 // ─── AI placeholder ───────────────────────────────────────────────────────────

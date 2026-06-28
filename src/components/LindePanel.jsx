@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { searchLinde } from '../services/lindeApi.js';
+import { searchLinde, importLinde } from '../services/lindeApi.js';
 
 export default function LindePanel({ onInsertQuote }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [importForm, setImportForm] = useState({ file_path: '', title: 'Słownik Lindego', volume: '' });
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   async function handleSearch(e) {
     e.preventDefault();
@@ -27,9 +31,69 @@ export default function LindePanel({ onInsertQuote }) {
     window.open(url, '_blank', 'noopener');
   }
 
+  async function handleImport(e) {
+    e.preventDefault();
+    if (!importForm.file_path.trim()) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const r = await importLinde(importForm);
+      setImportResult({ ok: true, msg: `Zaimportowano ${r.imported} haseł (źródło #${r.source_id})` });
+    } catch (e) {
+      setImportResult({ ok: false, msg: e.message });
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="linde-panel">
-      <div className="panel-title">Słownik Lindego</div>
+      <div className="linde-panel-header">
+        <div className="panel-title">Słownik Lindego</div>
+        <button
+          className="btn-ghost-sm"
+          onClick={() => setShowImport(s => !s)}
+          title="Importuj plik OCR/TXT Słownika Lindego"
+        >
+          {showImport ? '✕ Zamknij import' : '⊕ Import'}
+        </button>
+      </div>
+
+      {showImport && (
+        <form className="linde-import-form" onSubmit={handleImport}>
+          <div className="import-hint">
+            Podaj ścieżkę do pliku TXT/OCR Słownika Lindego na serwerze (np. <code>/home/ubuntu/linde_t1.txt</code>).
+          </div>
+          <label>Ścieżka do pliku na serwerze
+            <input
+              value={importForm.file_path}
+              onChange={e => setImportForm(f => ({ ...f, file_path: e.target.value }))}
+              placeholder="/home/ubuntu/linde_tom1.txt"
+            />
+          </label>
+          <label>Tytuł źródła
+            <input
+              value={importForm.title}
+              onChange={e => setImportForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="Słownik Lindego"
+            />
+          </label>
+          <label>Tom
+            <input
+              value={importForm.volume}
+              onChange={e => setImportForm(f => ({ ...f, volume: e.target.value }))}
+              placeholder="np. I"
+            />
+          </label>
+          <button type="submit" className="btn-primary-sm" disabled={importing}>
+            {importing ? 'Importuję…' : 'Importuj'}
+          </button>
+          {importResult && (
+            <div className={importResult.ok ? 'import-ok' : 'import-err'}>{importResult.msg}</div>
+          )}
+        </form>
+      )}
+
       <form className="linde-search-form" onSubmit={handleSearch}>
         <input
           value={query}

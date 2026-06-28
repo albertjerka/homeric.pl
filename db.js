@@ -71,10 +71,21 @@ export async function initDb() {
       content_json TEXT DEFAULT '{}',
       content_html TEXT DEFAULT '',
       content_text TEXT DEFAULT '',
+      notes        TEXT DEFAULT '',
       order_index  INTEGER DEFAULT 0,
       word_count   INTEGER DEFAULT 0,
       created_at   TIMESTAMPTZ DEFAULT NOW(),
       updated_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS chapter_versions (
+      id           SERIAL PRIMARY KEY,
+      chapter_id   INTEGER NOT NULL REFERENCES writing_chapters(id) ON DELETE CASCADE,
+      content_json TEXT,
+      content_html TEXT,
+      content_text TEXT,
+      word_count   INTEGER DEFAULT 0,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS writing_characters (
@@ -141,6 +152,15 @@ export async function initDb() {
       created_at       TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+
+  // Additive migrations — safe to run multiple times
+  await pool.query(`ALTER TABLE writing_chapters ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`);
+
+  // pg_trgm for fuzzy Linde search (requires superuser — graceful fallback)
+  try {
+    await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_linde_trgm ON linde_entries USING gin(normalized_headword gin_trgm_ops)`);
+  } catch {}
 }
 
 export default pool;

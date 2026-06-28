@@ -2327,3 +2327,371 @@ body::before {
   max-height: 300px;
   overflow-y: auto;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ETAP 2 — Fullscreen, Versions, Export, CharacterPlaceModal, Linde Import
+═══════════════════════════════════════════════════════════════ */
+
+/* ─── Fullscreen editor ─── */
+
+.writer-fullscreen {
+  grid-template-columns: 1fr !important;
+}
+
+.writer-fullscreen .writer-sidebar,
+.writer-fullscreen .writer-right {
+  display: none;
+}
+
+.fullscreen-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.fullscreen-title {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.9rem;
+  color: var(--accent-dim);
+  flex: 1;
+  text-align: center;
+}
+
+.active-notes {
+  color: var(--accent) !important;
+  border-color: var(--accent-dim) !important;
+}
+
+/* ─── Chapter notes ─── */
+
+.chapter-notes {
+  padding: 0 20px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.chapter-notes-textarea {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.chapter-notes-textarea:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+/* ─── Chapter versions panel ─── */
+
+.versions-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 10px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.versions-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.versions-loading, .versions-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 16px 0;
+  line-height: 1.5;
+}
+
+.versions-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.version-item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s;
+}
+
+.version-item.selected {
+  border-color: var(--accent-dim);
+}
+
+.version-date {
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.version-words {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.version-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.btn-icon-danger {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 5px;
+  font-size: 0.9rem;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.15s;
+  margin-left: auto;
+}
+
+.btn-icon-danger:hover { color: #d07080; }
+
+.version-preview {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.version-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.version-preview-content {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.version-preview-content h1, .version-preview-content h2, .version-preview-content h3 {
+  color: var(--accent-dim);
+  margin: .5em 0 .3em;
+}
+
+/* ─── Export panel ─── */
+
+.export-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 14px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.export-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+
+.export-option:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+  background: var(--bg-hover);
+}
+
+.export-option:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.export-icon { font-size: 1.5rem; line-height: 1; }
+
+.export-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.export-sub {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.export-loading {
+  font-size: 0.82rem;
+  color: var(--accent-dim);
+  font-style: italic;
+}
+
+/* ─── Linde import ─── */
+
+.linde-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.linde-import-form {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linde-import-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.linde-import-form input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+}
+
+.linde-import-form input:focus { outline: none; border-color: var(--accent-dim); }
+
+.import-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.import-hint code {
+  background: var(--bg-panel);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.7rem;
+}
+
+.import-ok {
+  font-size: 0.78rem;
+  color: var(--success);
+  padding: 4px 8px;
+  background: rgba(74,144,101,0.1);
+  border-radius: 5px;
+}
+
+.import-err {
+  font-size: 0.78rem;
+  color: #d07080;
+  padding: 4px 8px;
+  background: rgba(144,64,80,0.1);
+  border-radius: 5px;
+}
+
+/* ─── Character/Place cards in sidebar ─── */
+
+.entity-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entity-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.entity-card:hover { border-color: var(--accent-dim); }
+
+.entity-card-main {
+  flex: 1;
+  padding: 8px 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.entity-card-name {
+  font-size: 0.83rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-card-desc {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.entity-card-actions {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 4px;
+  gap: 2px;
+}
+
+.entity-add-bar {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}

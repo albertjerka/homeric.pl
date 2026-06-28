@@ -45,3 +45,14 @@ export const updatePlace = (id, data) => request('PUT', `/places/${id}`, data);
 export const deletePlace = (id) => request('DELETE', `/places/${id}`);
 
 export const aiAction = (data) => request('POST', '/ai', data);
+
+export const getChapterVersions = (chapterId) => request('GET', `/chapters/${chapterId}/versions`);
+export const getVersion = (id) => request('GET', `/versions/${id}`);
+export const deleteVersion = (id) => request('DELETE', `/versions/${id}`);
+
+export function exportProject(projectId, format) {
+  const token = (typeof window !== 'undefined' && window.localStorage.getItem('homeric_token')) || '';
+  return fetch(`/api/writer/projects/${projectId}/export?format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

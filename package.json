@@ -22,6 +22,7 @@
     "pg": "^8.13.3",
     "pdfjs-dist": "^4.4.168",
     "@tiptap/extension-character-count": "^2.10.3",
+    "docx": "^9.5.0",
     "@tiptap/extension-placeholder": "^2.10.3",
     "@tiptap/react": "^2.10.3",
     "@tiptap/starter-kit": "^2.10.3",
