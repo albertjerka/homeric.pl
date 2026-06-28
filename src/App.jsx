@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import LoginPage from './components/LoginPage.jsx';
+import { isLoggedIn } from './services/auth.js';
 import Header from './components/Header.jsx';
 import Library from './components/Library.jsx';
 import PDFUpload from './components/PDFUpload.jsx';
@@ -15,7 +17,7 @@ import {
 } from './services/dbApi.js';
 import { migrateFromLocalStorage } from './services/migration.js';
 
-export default function App() {
+function MainApp() {
   const [phase, setPhase] = useState('home');
   const [language, setLanguage] = useState('ru');
   const [headerImage, setHeaderImage] = useState(null);
@@ -65,7 +67,6 @@ export default function App() {
     }
   }, [currentPage, currentBookId]);
 
-  // Zapisuj obrazki do bazy przy każdej zmianie
   useEffect(() => {
     if (!currentBookId || !Object.keys(pageImages).length) return;
     Object.entries(pageImages).forEach(([page, imgs]) => {
@@ -140,19 +141,15 @@ export default function App() {
     if (!book) return;
 
     batch.reset();
-    let arrayBuffer = await getBookPDF(bookId);
-
+    const arrayBuffer = await getBookPDF(bookId);
     if (!arrayBuffer) {
-      const file = await pickPDFFile();
-      if (!file) return;
-      arrayBuffer = await file.arrayBuffer();
-      await uploadPDF(bookId, arrayBuffer);
+      alert('Brak pliku PDF w bazie. Użyj przycisku "↑ PDF" na karcie książki, aby wgrać plik.');
+      return;
     }
 
     const doc = await loadPDFFromBuffer(arrayBuffer);
     if (!doc) return;
 
-    // Załaduj obrazki z bazy
     try {
       const imgs = await getImages(bookId);
       if (Object.keys(imgs).length) setPageImages(imgs);
@@ -160,12 +157,33 @@ export default function App() {
 
     const bookStart = book.start_page || 1;
     const bookEnd = book.end_page || doc.numPages;
-
     await startReading(doc, book.title, book.language, bookStart, book.end_page, bookId);
     setCurrentPage(book.current_page || bookStart);
-
     batch.start(doc, bookStart, bookEnd, book.language, getPageText, bookId);
   }, [books, loadPDFFromBuffer, sampleTexts, batch, getPageText]);
+
+  const handleUploadAndOpen = useCallback(async (bookId, file) => {
+    const book = books.find(b => b.id === bookId);
+    if (!book || !file) return;
+
+    batch.reset();
+    const arrayBuffer = await file.arrayBuffer();
+    await uploadPDF(bookId, arrayBuffer);
+
+    const doc = await loadPDFFromBuffer(arrayBuffer);
+    if (!doc) return;
+
+    try {
+      const imgs = await getImages(bookId);
+      if (Object.keys(imgs).length) setPageImages(imgs);
+    } catch {}
+
+    const bookStart = book.start_page || 1;
+    const bookEnd = book.end_page || doc.numPages;
+    await startReading(doc, book.title, book.language, bookStart, book.end_page, bookId);
+    setCurrentPage(book.current_page || bookStart);
+    batch.start(doc, bookStart, bookEnd, book.language, getPageText, bookId);
+  }, [books, loadPDFFromBuffer, batch, getPageText]);
 
   const handleDeleteBook = useCallback(async (bookId) => {
     await deleteBook(bookId);
@@ -220,7 +238,7 @@ export default function App() {
       {phase === 'home' && (
         <div className="home-screen">
           {!loadingLibrary && (
-            <Library books={books} onOpen={handleOpenBook} onDelete={handleDeleteBook} />
+            <Library books={books} onOpen={handleOpenBook} onUploadAndOpen={handleUploadAndOpen} onDelete={handleDeleteBook} />
           )}
           <div className="home-upload-section">
             <PDFUpload onLoad={handleLoad} language={language} />
@@ -289,4 +307,20 @@ export default function App() {
       )}
     </div>
   );
+}
+
+export default function App() {
+  const [authenticated, setAuthenticated] = useState(isLoggedIn());
+
+  useEffect(() => {
+    const handler = () => setAuthenticated(false);
+    window.addEventListener('auth:logout', handler);
+    return () => window.removeEventListener('auth:logout', handler);
+  }, []);
+
+  if (!authenticated) {
+    return <LoginPage onLogin={() => setAuthenticated(true)} />;
+  }
+
+  return <MainApp />;
 }

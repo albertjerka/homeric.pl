@@ -13,8 +13,8 @@ export default function Header({ language, onLanguageChange, headerImage, onHead
           onClick={() => fileRef.current?.click()}
         >
           {headerImage
-            ? <img src={headerImage} alt="UANNA sigil" />
-            : <span className="header-sigil-placeholder">𒀭</span>
+            ? <img src={headerImage} alt="Homeric" />
+            : <img src="/homeric.png" alt="Homeric" style={{ opacity: 0.85 }} />
           }
           <input
             ref={fileRef}
@@ -32,33 +32,20 @@ export default function Header({ language, onLanguageChange, headerImage, onHead
         </div>
 
         <div className="header-titles">
-          <span className="cuneiform">𒌋𒀭𒈾 · 𒄑𒂅𒀭</span>
-          <h1>UANNA – ten który pochodzi z Nieba</h1>
-          <p>Nauczyciel języka z Twoich ulubionych tekstów &nbsp;·&nbsp; Autor: Albert Jerka</p>
+          <h1>
+            <span className="logo-greek">Η</span>
+            Homeric
+          </h1>
+          <p>Platforma nauki przez literaturę &nbsp;·&nbsp; Albert Jerka</p>
         </div>
       </div>
 
       <div className="header-right">
         {exportButton}
         <div className="lang-switch">
-          <button
-            className={language === 'ru' ? 'active' : ''}
-            onClick={() => onLanguageChange('ru')}
-          >
-            RU
-          </button>
-          <button
-            className={language === 'uk' ? 'active' : ''}
-            onClick={() => onLanguageChange('uk')}
-          >
-            UA
-          </button>
-          <button
-            className={language === 'en' ? 'active' : ''}
-            onClick={() => onLanguageChange('en')}
-          >
-            EN
-          </button>
+          <button className={language === 'ru' ? 'active' : ''} onClick={() => onLanguageChange('ru')}>RU</button>
+          <button className={language === 'uk' ? 'active' : ''} onClick={() => onLanguageChange('uk')}>UA</button>
+          <button className={language === 'en' ? 'active' : ''} onClick={() => onLanguageChange('en')}>EN</button>
         </div>
       </div>
     </header>

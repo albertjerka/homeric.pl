@@ -1,7 +1,17 @@
-const BASE = 'http://localhost:3002';
+import { getToken, clearToken } from './auth.js';
 
 async function request(path, options = {}) {
-  const r = await fetch(`${BASE}${path}`, options);
+  const token = getToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const r = await fetch(`/api${path}`, { ...options, headers });
+
+  if (r.status === 401) {
+    clearToken();
+    window.dispatchEvent(new Event('auth:logout'));
+    return r;
+  }
   if (!r.ok && r.status !== 404) throw new Error(`API error ${r.status}: ${path}`);
   return r;
 }
@@ -9,11 +19,11 @@ async function request(path, options = {}) {
 // ─── Books ───────────────────────────────────────────────────────────────────
 
 export async function getAllBooks() {
-  return (await request('/api/books')).json();
+  return (await request('/books')).json();
 }
 
 export async function saveBook({ title, language, startPage, endPage, currentPage, totalPages }) {
-  const r = await request('/api/books', {
+  const r = await request('/books', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, language, start_page: startPage, end_page: endPage ?? null, current_page: currentPage, total_pages: totalPages }),
@@ -23,7 +33,7 @@ export async function saveBook({ title, language, startPage, endPage, currentPag
 }
 
 export async function uploadPDF(bookId, arrayBuffer) {
-  await request(`/api/books/${bookId}/pdf`, {
+  await request(`/books/${bookId}/pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: arrayBuffer,
@@ -31,13 +41,13 @@ export async function uploadPDF(bookId, arrayBuffer) {
 }
 
 export async function getBookPDF(bookId) {
-  const r = await request(`/api/books/${bookId}/pdf`);
+  const r = await request(`/books/${bookId}/pdf`);
   if (r.status === 404) return null;
   return r.arrayBuffer();
 }
 
 export async function updateBook(bookId, fields) {
-  await request(`/api/books/${bookId}`, {
+  await request(`/books/${bookId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
@@ -45,23 +55,23 @@ export async function updateBook(bookId, fields) {
 }
 
 export async function deleteBook(bookId) {
-  await request(`/api/books/${bookId}`, { method: 'DELETE' });
+  await request(`/books/${bookId}`, { method: 'DELETE' });
 }
 
 // ─── Pages ───────────────────────────────────────────────────────────────────
 
 export async function getPage(bookId, pageNum, language) {
-  const r = await request(`/api/pages/${bookId}/${pageNum}/${language}`);
+  const r = await request(`/pages/${bookId}/${pageNum}/${language}`);
   if (r.status === 404) return null;
   return r.json();
 }
 
 export async function getAllPages(bookId, language) {
-  return (await request(`/api/pages/${bookId}/${language}`)).json();
+  return (await request(`/pages/${bookId}/${language}`)).json();
 }
 
 export async function savePage(bookId, pageNum, language, data) {
-  await request('/api/pages', {
+  await request('/pages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ book_id: bookId, page_num: pageNum, language, data }),
@@ -71,11 +81,11 @@ export async function savePage(bookId, pageNum, language, data) {
 // ─── Images ──────────────────────────────────────────────────────────────────
 
 export async function getImages(bookId) {
-  return (await request(`/api/images/${bookId}`)).json();
+  return (await request(`/images/${bookId}`)).json();
 }
 
 export async function saveImages(bookId, pageNum, images) {
-  await request(`/api/images/${bookId}/${pageNum}`, {
+  await request(`/images/${bookId}/${pageNum}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data: images }),
