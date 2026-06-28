@@ -45,6 +45,8 @@ export const updatePlace = (id, data) => request('PUT', `/places/${id}`, data);
 export const deletePlace = (id) => request('DELETE', `/places/${id}`);
 
 export const aiAction = (data) => request('POST', '/ai', data);
+export const getAiMessages = (chapterId) => request('GET', `/chapters/${chapterId}/ai-messages`);
+export const getDictionaryContext = (data) => request('POST', '/ai/dictionary-context', data);
 
 export const getChapterVersions = (chapterId) => request('GET', `/chapters/${chapterId}/versions`);
 export const getVersion = (id) => request('GET', `/versions/${id}`);

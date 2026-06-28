@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getChapters, getChapter, getCharacters, getPlaces, exportProject } from '../services/writerApi.js';
+import { getChapters, getChapter, getCharacters, getPlaces, exportProject, updateChapter } from '../services/writerApi.js';
 import WriterSidebar from './WriterSidebar.jsx';
 import WriterChapterEditor from './WriterChapterEditor.jsx';
 import LindePanel from './LindePanel.jsx';
@@ -12,10 +12,12 @@ export default function WriterProjectEditor({ project, onBack }) {
   const [places, setPlaces] = useState([]);
   const [activeChapter, setActiveChapter] = useState(null);
   const [rightPanel, setRightPanel] = useState('linde');
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [selectedText, setSelectedText] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const pollingRef = useRef(null);
+  const editorInsertRef = useRef(null);
 
   useEffect(() => {
     getChapters(project.id).then(chs => {
@@ -32,18 +34,6 @@ export default function WriterProjectEditor({ project, onBack }) {
       if (el) setSelectedText(el.value);
     }, 500);
     return () => clearInterval(pollingRef.current);
-  }, []);
-
-  // Insert text event from AI/Linde panels
-  useEffect(() => {
-    const handler = (e) => {
-      // Dispatch to Tiptap via a hidden textarea trick
-      const el = document.querySelector('.ProseMirror');
-      if (el) el.focus();
-      // Actually trigger via editor's custom event - handled in WriterChapterEditor
-    };
-    window.addEventListener('writer:insert', handler);
-    return () => window.removeEventListener('writer:insert', handler);
   }, []);
 
   async function loadChapter(ch) {
@@ -63,6 +53,22 @@ export default function WriterProjectEditor({ project, onBack }) {
       content_html: version.content_html,
       content_text: version.content_text,
     }));
+  }
+
+  // Insert/replace from AI panel into editor
+  function handleAiInsert(text) {
+    window.dispatchEvent(new CustomEvent('writer:insert', { detail: { text, mode: 'append' } }));
+  }
+
+  function handleAiReplace(text) {
+    window.dispatchEvent(new CustomEvent('writer:insert', { detail: { text, mode: 'replace' } }));
+  }
+
+  async function handleAiNote(text) {
+    if (!activeChapter) return;
+    const newNotes = `${activeChapter.notes || ''}\n\n[Homer AI]\n${text}`.trim();
+    await updateChapter(activeChapter.id, { notes: newNotes }).catch(() => {});
+    setActiveChapter(prev => ({ ...prev, notes: newNotes }));
   }
 
   async function handleExport(format) {
@@ -90,8 +96,14 @@ export default function WriterProjectEditor({ project, onBack }) {
     }
   }
 
+  const layoutClass = [
+    'writer-editor-layout',
+    fullscreen ? 'writer-fullscreen' : '',
+    aiPanelOpen && !fullscreen ? 'ai-open' : '',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={`writer-editor-layout${fullscreen ? ' writer-fullscreen' : ''}`}>
+    <div className={layoutClass}>
       {!fullscreen && (
         <WriterSidebar
           project={project}
@@ -110,10 +122,24 @@ export default function WriterProjectEditor({ project, onBack }) {
       <main className="writer-main">
         {fullscreen && (
           <div className="fullscreen-topbar">
-            <button className="btn-ghost-sm" onClick={() => setFullscreen(false)}>⊡ Wyjdź z pełnego ekranu</button>
+            <button className="btn-ghost-sm" onClick={() => setFullscreen(false)}>⊡ Wyjdź</button>
             <span className="fullscreen-title">{project.title}</span>
           </div>
         )}
+
+        {!fullscreen && (
+          <div className="writer-toolbar">
+            <button
+              className={`writer-ai-toggle${aiPanelOpen ? ' active' : ''}`}
+              onClick={() => setAiPanelOpen(o => !o)}
+              title="Otwórz / zamknij panel Homer AI"
+            >
+              <span style={{ fontFamily: 'serif', fontStyle: 'italic' }}>Η</span>
+              {aiPanelOpen ? ' Zamknij AI' : ' Homer AI'}
+            </button>
+          </div>
+        )}
+
         {activeChapter ? (
           <WriterChapterEditor
             key={activeChapter.id}
@@ -124,87 +150,62 @@ export default function WriterProjectEditor({ project, onBack }) {
         ) : (
           <div className="writer-no-chapter">
             {chapters.length === 0
-              ? <p>Dodaj pierwszy rozdział w panelu po lewej, aby zacząć pisać.</p>
+              ? <p>Dodaj pierwszy rozdział w panelu po lewej.</p>
               : <p>Wybierz rozdział z panelu po lewej.</p>
             }
           </div>
         )}
       </main>
 
-      {!fullscreen && (
+      {/* Panel Homer AI jako prawa kolumna */}
+      {aiPanelOpen && !fullscreen && (
+        <aside className="writer-ai-column">
+          <WriterAIPanel
+            selectedText={selectedText}
+            chapterText={activeChapter?.content_text || ''}
+            projectId={project.id}
+            chapterId={activeChapter?.id}
+            onInsert={handleAiInsert}
+            onReplace={handleAiReplace}
+            onNote={handleAiNote}
+          />
+        </aside>
+      )}
+
+      {/* Prawy panel z Linde/Wersje/Eksport — gdy AI nie jest otwarty */}
+      {!aiPanelOpen && !fullscreen && (
         <aside className="writer-right">
           <div className="right-panel-tabs">
-            <button className={rightPanel === 'linde' ? 'active' : ''} onClick={() => setRightPanel('linde')}>
-              Słownik
-            </button>
-            <button className={rightPanel === 'ai' ? 'active' : ''} onClick={() => setRightPanel('ai')}>
-              AI
-            </button>
-            <button className={rightPanel === 'versions' ? 'active' : ''} onClick={() => setRightPanel('versions')}>
-              Wersje
-            </button>
-            <button className={rightPanel === 'export' ? 'active' : ''} onClick={() => setRightPanel('export')}>
-              Eksport
-            </button>
+            <button className={rightPanel === 'linde' ? 'active' : ''} onClick={() => setRightPanel('linde')}>Słownik</button>
+            <button className={rightPanel === 'versions' ? 'active' : ''} onClick={() => setRightPanel('versions')}>Wersje</button>
+            <button className={rightPanel === 'export' ? 'active' : ''} onClick={() => setRightPanel('export')}>Eksport</button>
           </div>
 
-          {rightPanel === 'linde' && <LindePanel />}
-          {rightPanel === 'ai' && (
-            <WriterAIPanel
-              selectedText={selectedText}
-              chapterText={activeChapter?.content_text || ''}
-              projectId={project.id}
-              chapterId={activeChapter?.id}
+          {rightPanel === 'linde' && (
+            <LindePanel
+              onInsertQuote={text => window.dispatchEvent(new CustomEvent('writer:insert', { detail: { text, mode: 'append' } }))}
             />
           )}
           {rightPanel === 'versions' && (
-            <ChapterVersions
-              chapter={activeChapter}
-              onRestore={handleRestoreVersion}
-            />
+            <ChapterVersions chapter={activeChapter} onRestore={handleRestoreVersion} />
           )}
           {rightPanel === 'export' && (
             <div className="export-panel">
               <div className="panel-title">Eksport książki</div>
-              <p className="export-desc">
-                Eksportuje wszystkie rozdziały projektu „<strong>{project.title}</strong>" do jednego pliku.
-              </p>
+              <p className="export-desc">„<strong>{project.title}</strong>"</p>
               <div className="export-options">
-                <button
-                  className="export-option"
-                  onClick={() => handleExport('txt')}
-                  disabled={exporting}
-                >
-                  <div className="export-icon">📄</div>
-                  <div>
-                    <div className="export-label">Czysty tekst</div>
-                    <div className="export-sub">.txt — wszystkie rozdziały</div>
-                  </div>
-                </button>
-                <button
-                  className="export-option"
-                  onClick={() => handleExport('html')}
-                  disabled={exporting}
-                >
-                  <div className="export-icon">🌐</div>
-                  <div>
-                    <div className="export-label">HTML</div>
-                    <div className="export-sub">.html — z formatowaniem</div>
-                  </div>
-                </button>
-                <button
-                  className="export-option"
-                  onClick={() => handleExport('docx')}
-                  disabled={exporting}
-                >
-                  <div className="export-icon">📝</div>
-                  <div>
-                    <div className="export-label">Word / DOCX</div>
-                    <div className="export-sub">.docx — do edycji w Word</div>
-                  </div>
-                </button>
+                {[
+                  { format: 'txt', icon: '📄', label: 'Czysty tekst', sub: '.txt' },
+                  { format: 'html', icon: '🌐', label: 'HTML', sub: '.html' },
+                  { format: 'docx', icon: '📝', label: 'Word / DOCX', sub: '.docx' },
+                ].map(({ format, icon, label, sub }) => (
+                  <button key={format} className="export-option" onClick={() => handleExport(format)} disabled={exporting}>
+                    <div className="export-icon">{icon}</div>
+                    <div><div className="export-label">{label}</div><div className="export-sub">{sub}</div></div>
+                  </button>
+                ))}
               </div>
-              {exporting && <div className="export-loading">Generowanie pliku…</div>}
+              {exporting && <div className="export-loading">Generowanie…</div>}
             </div>
           )}
         </aside>

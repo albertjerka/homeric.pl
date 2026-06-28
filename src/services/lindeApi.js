@@ -24,3 +24,4 @@ async function request(method, path, body) {
 
 export const searchLinde = (q) => request('GET', `/search?q=${encodeURIComponent(q)}`);
 export const importLinde = (data) => request('POST', '/import', data);
+export const askLinde = (data) => request('POST', '/ask', data);

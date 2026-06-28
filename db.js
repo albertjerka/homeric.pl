@@ -160,6 +160,32 @@ export async function initDb() {
   await pool.query(`ALTER TABLE writer_ai_actions ADD COLUMN IF NOT EXISTS image_data TEXT`);
   await pool.query(`ALTER TABLE writer_ai_actions ADD COLUMN IF NOT EXISTS image_media_type TEXT`);
 
+  // AI sessions & messages
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS writer_ai_sessions (
+      id         SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES writing_projects(id) ON DELETE CASCADE,
+      chapter_id INTEGER REFERENCES writing_chapters(id) ON DELETE SET NULL,
+      title      TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS writer_ai_messages (
+      id               SERIAL PRIMARY KEY,
+      session_id       INTEGER REFERENCES writer_ai_sessions(id) ON DELETE CASCADE,
+      role             TEXT NOT NULL DEFAULT 'assistant',
+      mode             TEXT,
+      prompt           TEXT,
+      input_text       TEXT,
+      output_text      TEXT,
+      selected_text    TEXT,
+      linde_terms_json TEXT,
+      scene_words_json TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_messages_session ON writer_ai_messages(session_id);
+  `);
+
   // pg_trgm for fuzzy Linde search (requires superuser — graceful fallback)
   try {
     await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);

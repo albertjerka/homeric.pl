@@ -12,20 +12,20 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@tiptap/extension-character-count": "^2.27.2",
+    "@tiptap/extension-placeholder": "^2.27.2",
+    "@tiptap/react": "^2.27.2",
+    "@tiptap/starter-kit": "^2.27.2",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
+    "docx": "^9.5.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonrepair": "^3.14.0",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.1",
-    "pg": "^8.13.3",
     "pdfjs-dist": "^4.4.168",
-    "@tiptap/extension-character-count": "^2.10.3",
-    "docx": "^9.5.0",
-    "@tiptap/extension-placeholder": "^2.10.3",
-    "@tiptap/react": "^2.10.3",
-    "@tiptap/starter-kit": "^2.10.3",
+    "pg": "^8.13.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -33,5 +33,10 @@
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
     "vite": "^5.4.0"
+  },
+  "allowScripts": {
+    "@tiptap/react@2.27.2": true,
+    "@tiptap/starter-kit@2.27.2": true,
+    "esbuild@0.21.5": true
   }
 }

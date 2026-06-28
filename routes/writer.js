@@ -332,79 +332,244 @@ ${p.description ? `<p style="color:#666;font-style:italic">${p.description}</p>`
   res.status(400).json({ error: 'Nieznany format. Użyj: txt, html, docx' });
 });
 
-// ─── Homer AI ────────────────────────────────────────────────────────────────
+// ─── Homer AI — helpers ──────────────────────────────────────────────────────
+
+const NORM_MAP = [['ą','a'],['ć','c'],['ę','e'],['ł','l'],['ń','n'],['ó','o'],['ś','s'],['ź','z'],['ż','z']];
+function normPL(s) {
+  let r = s.toLowerCase();
+  for (const [a,b] of NORM_MAP) r = r.replaceAll(a, b);
+  return r;
+}
+
+async function findDictionaryTerms(text, limit = 20) {
+  const words = [...new Set(
+    (text || '').toLowerCase()
+      .replace(/[^a-ząćęłńóśźż\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4)
+      .map(normPL)
+  )].slice(0, 10);
+
+  if (!words.length) return [];
+
+  const conditions = words.map((w, i) => `normalized_headword ILIKE $${i+1}`).join(' OR ');
+  const r = await pool.query(
+    `SELECT headword, body, volume FROM linde_entries WHERE ${conditions}
+     ORDER BY LENGTH(COALESCE(body,'')) DESC LIMIT $${words.length+1}`,
+    [...words.map(w => `%${w}%`), limit]
+  );
+  return r.rows.map(e => ({
+    headword: e.headword,
+    source: `Linde Tom ${e.volume}`,
+    body: (e.body || '').slice(0, 400),
+  }));
+}
+
+const AI_MODES = {
+  improve_style: {
+    label: 'Popraw styl',
+    system: 'Jesteś Homeric AI — literackim redaktorem języka polskiego. Popraw styl fragmentu, zachowując sens, ton i fakty. Nie streszczaj. Nie upraszczaj nadmiernie. Popraw rytm zdania, obrazowość i precyzję.',
+  },
+  archaic_tone: {
+    label: 'Archaiczne',
+    system: 'Jesteś Homeric AI — redaktorem stylu archaizującego. Przepisz fragment na piękniejszą, lekko dawną polszczyznę. Korzystaj z podanych haseł ze Słownika Lindego. Szukaj słów pochodnych, znaczeniowo bliskich i dawnych odpowiedników. Nie rób pastiszu. Tekst ma być literacki, ozdobny, szlachetny i czytelny.',
+  },
+  ornate: {
+    label: 'Ozdobne',
+    system: 'Jesteś Homeric AI — stylistą prozy literackiej. Rozwiń obrazowość, rytm i metaforykę zdania. Zachowaj sens, ale nadaj mu większą siłę, barwę i elegancję. Użyj słów podanych w polu "Słowa do sceny". Jeśli dostępne są hasła ze Słownika Lindego, wykorzystaj je jako inspirację.',
+  },
+  epic_tone: {
+    label: 'Ton epicki',
+    system: 'Jesteś Homeric AI — redaktorem stylu epickiego. Nadaj fragmentowi podniosłość, rytm i ciężar opowieści. Zachowaj sens i nie dodawaj nowych wydarzeń bez potrzeby. Tekst ma brzmieć jak fragment wielkiej opowieści.',
+  },
+  expand_scene: {
+    label: 'Rozwiń scenę',
+    system: 'Jesteś Homeric AI — asystentem pisarskim. Rozwiń poniższą scenę literacką. Dodaj opisy zmysłowe (wzrok, słuch, zapach, dotyk), pogłęb emocje postaci, wprowadź szczegóły miejsca. Nie zmieniaj fabuły.',
+  },
+  propose_dialogue: {
+    label: 'Dialog',
+    system: 'Jesteś Homeric AI — dramaturgiem. Na podstawie kontekstu literackiego zaproponuj naturalny, dramaturgicznie żywy dialog między postaciami. Dialog ma pasować do stylu i epoki.',
+  },
+  propose_variants: {
+    label: 'Warianty zdania',
+    system: 'Jesteś Homeric AI — tworzysz warianty jednego zdania. Podaj 5 różnych wersji: prostą, literacką, archaizującą, ozdobną i epicką. Każdą podpisz. Nie gub sensu oryginału.',
+  },
+  linde_words: {
+    label: 'Słowa Lindego',
+    system: 'Jesteś Homeric AI — leksykografem i stylistą. Znajdź mocniejsze, bardziej wyraziste lub archaiczne odpowiedniki słów z tekstu. Skorzystaj z haseł Słownika Lindego. Podaj listę: słowo oryginalne → propozycje.',
+  },
+  custom: {
+    label: 'Własny prompt',
+    system: 'Jesteś Homeric AI — elitarnym asystentem pisarskim specjalizującym się w literaturze polskiej, historycznej i klasycznej. Wykonaj polecenie użytkownika.',
+  },
+};
+
+// ─── AI — historia dla rozdziału ─────────────────────────────────────────────
+
+router.get('/chapters/:chapterId/ai-messages', async (req, res) => {
+  const chapterId = parseInt(req.params.chapterId);
+  const r = await pool.query(
+    `SELECT m.id, m.mode, m.prompt, m.input_text, m.output_text,
+            m.selected_text, m.linde_terms_json, m.scene_words_json, m.created_at,
+            s.id AS session_id
+     FROM writer_ai_messages m
+     JOIN writer_ai_sessions s ON s.id = m.session_id
+     WHERE s.chapter_id = $1 AND m.role = 'assistant'
+     ORDER BY m.created_at DESC
+     LIMIT 50`,
+    [chapterId]
+  );
+  res.json(r.rows);
+});
+
+// ─── AI — kontekst ze słowników ──────────────────────────────────────────────
+
+router.post('/ai/dictionary-context', async (req, res) => {
+  const { text, mode } = req.body;
+  const terms = await findDictionaryTerms(text, 20);
+  res.json({ terms });
+});
+
+// ─── Homer AI — główny endpoint ──────────────────────────────────────────────
 
 router.post('/ai', async (req, res) => {
   const {
-    action_type, selected_text, chapter_context, instruction,
-    image_base64, image_media_type,
+    mode = 'improve_style',
+    prompt: userPrompt,
+    input_text,
+    selected_text,
+    chapter_context,
+    scene_words = [],
+    use_linde = true,
+    project_id,
+    chapter_id,
+    image_base64,
+    image_media_type,
+    // legacy compat
+    action_type,
+    instruction,
   } = req.body;
 
-  const text = selected_text || chapter_context || '';
+  const effectiveMode = mode || action_type || 'improve_style';
+  const text = selected_text || input_text || chapter_context || '';
+
   if (!text.trim() && !image_base64) {
-    return res.status(400).json({ error: 'Brak tekstu ani obrazka do przetworzenia' });
+    return res.status(400).json({ error: 'Brak tekstu ani obrazka do przetworzenia.' });
   }
 
-  const systemPrompts = {
-    improve_style: 'Popraw styl poniższego fragmentu literackiego. Zachowaj sens i narrację, popraw rytm zdań, usuń powtórzenia, podnieś jakość językową. Odpowiedz tylko poprawionym tekstem.',
-    expand_scene: 'Rozwiń poniższą scenę literacką. Dodaj opisy zmysłowe (wzrok, słuch, zapach, dotyk), pogłęb emocje postaci, wprowadź szczegóły miejsca. Nie zmieniaj fabuły. Odpowiedz tylko rozbudowanym tekstem.',
-    archaic_tone: 'Przepisz poniższy fragment na bardziej literacki, lekko archaiczny styl polski. Zachowaj sens i fabułę, popraw rytm zdania, podnieś styl. Nie przesadzaj z archaizmami — tekst ma być czytelny. Odpowiedz tylko przepisanym tekstem.',
-    propose_dialogue: 'Na podstawie poniższego kontekstu literackiego zaproponuj naturalny, dramaturgicznie żywy dialog między postaciami. Dialog ma pasować do stylu i epoki. Odpowiedz tylko dialogiem w formacie scenicznym.',
-    summarize_chapter: 'Napisz literackie, zwięzłe streszczenie poniższego fragmentu w 3–5 zdaniach. Zachowaj atmosferę i kluczowe momenty. Odpowiedz tylko streszczeniem.',
-    custom: instruction || 'Wykonaj poniższe zadanie dotyczące tekstu lub obrazu literackiego. Odpowiedz po polsku.',
-  };
-
-  const system = systemPrompts[action_type] || systemPrompts.custom;
+  const modeConfig = AI_MODES[effectiveMode] || AI_MODES.custom;
+  const customInstruction = userPrompt || instruction || '';
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const userContent = [];
-
-    if (image_base64) {
-      userContent.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: image_media_type || 'image/jpeg',
-          data: image_base64,
-        },
-      });
+    // Pobierz kontekst ze słownika Lindego
+    let lindeTerms = [];
+    if (use_linde && text.trim()) {
+      lindeTerms = await findDictionaryTerms(text, 20);
     }
 
+    // Zbuduj prompt użytkownika
+    let userTextParts = [];
+
+    if (customInstruction.trim()) {
+      userTextParts.push(`INSTRUKCJA UŻYTKOWNIKA:\n${customInstruction}`);
+    }
+    if (scene_words.length > 0) {
+      userTextParts.push(`SŁOWA DO SCENY (obowiązkowo użyj jako inspiracji):\n${scene_words.join(', ')}`);
+    }
+    if (lindeTerms.length > 0) {
+      const lindeSection = lindeTerms
+        .map(t => `HASŁO: ${t.headword} (${t.source})\n${t.body}`)
+        .join('\n\n---\n\n');
+      userTextParts.push(`KONTEKST ZE SŁOWNIKA LINDEGO:\n${lindeSection}`);
+    }
     if (text.trim()) {
-      const label = action_type === 'custom' ? 'KONTEKST' : 'TEKST';
-      userContent.push({ type: 'text', text: `${label}:\n${text}` });
-    } else if (image_base64 && action_type === 'custom') {
-      userContent.push({ type: 'text', text: instruction || 'Opisz i zinterpretuj ten obraz w kontekście literackim.' });
+      userTextParts.push(`TEKST DO OPRACOWANIA:\n${text}`);
     }
+
+    userTextParts.push(
+      `\nOdpowiedz w JSON (bez markdown, tylko obiekt JSON):\n` +
+      `{"variants":[{"label":"Wersja poprawiona","text":"..."},{"label":"Wersja archaizująca","text":"..."},{"label":"Wersja ozdobna","text":"..."},{"label":"Wersja epicka","text":"..."}],"linde_inspirations":["słowo1","słowo2"],"editor_note":"krótka uwaga"}\n` +
+      `Jeśli tryb nie wymaga wielu wariantów (np. dialog, streszczenie), użyj jednego wariantu z odpowiednim label.`
+    );
+
+    const userContent = [];
+    if (image_base64) {
+      userContent.push({ type: 'image', source: { type: 'base64', media_type: image_media_type || 'image/jpeg', data: image_base64 } });
+    }
+    userContent.push({ type: 'text', text: userTextParts.join('\n\n') });
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system: `Jesteś Homer AI — elitarnym asystentem pisarskim specjalizującym się w literaturze polskiej, historycznej i klasycznej. ${system}`,
+      max_tokens: 3000,
+      system: modeConfig.system,
       messages: [{ role: 'user', content: userContent }],
     });
 
-    const output = message.content[0].text;
+    const rawOutput = message.content[0].text;
 
+    // Spróbuj sparsować jako JSON, fallback do legacy
+    let structured;
+    try {
+      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/);
+      structured = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch {
+      structured = null;
+    }
+
+    if (!structured) {
+      structured = {
+        variants: [{ label: 'Odpowiedź', text: rawOutput }],
+        linde_inspirations: [],
+        editor_note: '',
+      };
+    }
+
+    // Zapisz w nowej tabeli writer_ai_messages
+    let sessionId;
+    try {
+      let sessionR;
+      if (chapter_id) {
+        sessionR = await pool.query(
+          `SELECT id FROM writer_ai_sessions WHERE chapter_id=$1 ORDER BY created_at DESC LIMIT 1`,
+          [chapter_id]
+        );
+      }
+      if (!sessionR?.rows?.length) {
+        sessionR = await pool.query(
+          `INSERT INTO writer_ai_sessions (project_id, chapter_id, title)
+           VALUES ($1,$2,$3) RETURNING id`,
+          [project_id||null, chapter_id||null, `Sesja AI — ${new Date().toLocaleString('pl-PL')}`]
+        );
+      }
+      sessionId = sessionR.rows[0].id;
+
+      await pool.query(
+        `INSERT INTO writer_ai_messages
+           (session_id, role, mode, prompt, input_text, output_text, selected_text, linde_terms_json, scene_words_json)
+         VALUES ($1,'assistant',$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          sessionId, effectiveMode,
+          customInstruction.slice(0, 2000),
+          text.slice(0, 2000),
+          JSON.stringify(structured),
+          (selected_text || '').slice(0, 1000),
+          JSON.stringify(lindeTerms.map(t => t.headword)),
+          JSON.stringify(scene_words),
+        ]
+      );
+    } catch {}
+
+    // Legacy: też zapisz w writer_ai_actions
     await pool.query(
-      `INSERT INTO writer_ai_actions
-         (project_id, chapter_id, action_type, input_text, output_text, image_data, image_media_type)
+      `INSERT INTO writer_ai_actions (project_id, chapter_id, action_type, input_text, output_text, image_data, image_media_type)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [
-        req.body.project_id || null,
-        req.body.chapter_id || null,
-        action_type,
-        text.slice(0, 2000),
-        output,
-        image_base64 || null,
-        image_media_type || null,
-      ]
-    );
+      [project_id||null, chapter_id||null, effectiveMode, text.slice(0,2000), rawOutput, image_base64||null, image_media_type||null]
+    ).catch(() => {});
 
-    res.json({ result: output });
+    res.json({ result: rawOutput, structured, lindeTerms });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

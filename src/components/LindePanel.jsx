@@ -1,15 +1,33 @@
-import { useState } from 'react';
-import { searchLinde, importLinde } from '../services/lindeApi.js';
+import { useState, useRef } from 'react';
+import { searchLinde, importLinde, askLinde } from '../services/lindeApi.js';
+
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function LindePanel({ onInsertQuote }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
   const [showImport, setShowImport] = useState(false);
   const [importForm, setImportForm] = useState({ file_path: '', title: 'Słownik Lindego', volume: '' });
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+
+  // AI prompt
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiImage, setAiImage] = useState(null); // { base64, type, previewUrl }
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState(null); // { answer, headwords }
+  const [aiError, setAiError] = useState('');
+  const imageRef = useRef();
 
   async function handleSearch(e) {
     e.preventDefault();
@@ -46,6 +64,41 @@ export default function LindePanel({ onInsertQuote }) {
     }
   }
 
+  async function handleAiImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const base64 = await toBase64(file);
+    const previewUrl = URL.createObjectURL(file);
+    setAiImage({ base64, type: file.type, previewUrl });
+  }
+
+  function removeAiImage() {
+    if (aiImage?.previewUrl) URL.revokeObjectURL(aiImage.previewUrl);
+    setAiImage(null);
+    if (imageRef.current) imageRef.current.value = '';
+  }
+
+  async function handleAiAsk(e) {
+    e.preventDefault();
+    if (!aiPrompt.trim() && !aiImage) return;
+    setAiLoading(true);
+    setAiError('');
+    setAiResult(null);
+    try {
+      const payload = { prompt: aiPrompt };
+      if (aiImage) {
+        payload.image_base64 = aiImage.base64;
+        payload.image_media_type = aiImage.type;
+      }
+      const r = await askLinde(payload);
+      setAiResult(r);
+    } catch (e) {
+      setAiError(e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   return (
     <div className="linde-panel">
       <div className="linde-panel-header">
@@ -55,14 +108,14 @@ export default function LindePanel({ onInsertQuote }) {
           onClick={() => setShowImport(s => !s)}
           title="Importuj plik OCR/TXT Słownika Lindego"
         >
-          {showImport ? '✕ Zamknij import' : '⊕ Import'}
+          {showImport ? '✕ Zamknij' : '⊕ Import'}
         </button>
       </div>
 
       {showImport && (
         <form className="linde-import-form" onSubmit={handleImport}>
           <div className="import-hint">
-            Podaj ścieżkę do pliku TXT/OCR Słownika Lindego na serwerze (np. <code>/home/ubuntu/linde_t1.txt</code>).
+            Podaj ścieżkę do pliku TXT/OCR Słownika Lindego na serwerze.
           </div>
           <label>Ścieżka do pliku na serwerze
             <input
@@ -94,6 +147,7 @@ export default function LindePanel({ onInsertQuote }) {
         </form>
       )}
 
+      {/* Wyszukiwanie hasła */}
       <form className="linde-search-form" onSubmit={handleSearch}>
         <input
           value={query}
@@ -111,17 +165,7 @@ export default function LindePanel({ onInsertQuote }) {
       {results !== null && results.length === 0 && (
         <div className="linde-empty">
           <p>Brak wyników dla „{query}"</p>
-          {query && (
-            <div className="linde-empty-actions">
-              <p className="linde-hint">
-                Baza Słownika Lindego nie została jeszcze zaimportowana lub nie zawiera tego hasła.<br />
-                Dodaj plik OCR/TXT słownika, aby uruchomić lokalne wyszukiwanie.
-              </p>
-              <button className="btn-ghost-sm" onClick={openOnline}>
-                Szukaj online →
-              </button>
-            </div>
-          )}
+          <button className="btn-ghost-sm" onClick={openOnline}>Szukaj online →</button>
         </div>
       )}
 
@@ -148,14 +192,96 @@ export default function LindePanel({ onInsertQuote }) {
                     Wstaw cytat
                   </button>
                 )}
-                {entry.source_url && (
-                  <a href={entry.source_url} target="_blank" rel="noopener" className="btn-ghost-sm">
-                    Źródło
-                  </a>
-                )}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* AI prompt */}
+      <div className="linde-ai-divider">
+        <span>Zapytaj o słownik</span>
+      </div>
+
+      <form className="linde-ai-form" onSubmit={handleAiAsk}>
+        <textarea
+          className="linde-ai-textarea"
+          value={aiPrompt}
+          onChange={e => setAiPrompt(e.target.value)}
+          placeholder="Zapytaj np.: Jakie słowa w języku staropolskim oznaczały miłość? Znajdź archaizmy pasujące do sceny uczty. Co Linde mówi o słowie 'brat'?"
+          rows={4}
+        />
+
+        <div className="linde-ai-actions">
+          <label className="linde-ai-img-btn" title="Wgraj obraz — AI znajdzie pasujące hasła">
+            {aiImage ? '📷 Zmień' : '🖼 Wgraj obraz'}
+            <input
+              ref={imageRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleAiImageChange}
+            />
+          </label>
+          <button
+            type="submit"
+            className="btn-primary-sm"
+            disabled={aiLoading || (!aiPrompt.trim() && !aiImage)}
+          >
+            {aiLoading ? 'Szukam…' : 'Zapytaj Lindego'}
+          </button>
+        </div>
+
+        {aiImage && (
+          <div className="linde-ai-img-preview">
+            <img src={aiImage.previewUrl} alt="Podgląd" />
+            <button type="button" className="linde-ai-img-remove" onClick={removeAiImage}>✕</button>
+          </div>
+        )}
+      </form>
+
+      {aiLoading && (
+        <div className="linde-ai-loading">
+          <span className="homer-loading-dot" /> Przeszukuję słownik i pytam AI…
+        </div>
+      )}
+
+      {aiError && <div className="linde-error">{aiError}</div>}
+
+      {aiResult && (
+        <div className="linde-ai-result">
+          {aiResult.headwords?.length > 0 && (
+            <div className="linde-ai-headwords">
+              <span className="linde-ai-hw-label">Użyte hasła:</span>
+              {aiResult.headwords.map(hw => (
+                <button
+                  key={hw}
+                  className="linde-ai-hw-tag"
+                  onClick={() => { setQuery(hw); searchLinde(hw).then(setResults).catch(() => {}); }}
+                  title="Kliknij aby zobaczyć pełne hasło"
+                >
+                  {hw}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="linde-ai-answer">{aiResult.answer}</div>
+          <div className="linde-ai-footer">
+            <button
+              className="btn-ghost-sm"
+              onClick={() => navigator.clipboard?.writeText(aiResult.answer).catch(() => {})}
+            >
+              Kopiuj
+            </button>
+            {onInsertQuote && (
+              <button
+                className="btn-ghost-sm"
+                onClick={() => onInsertQuote(aiResult.answer)}
+              >
+                Wstaw do rozdziału
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
