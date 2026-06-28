@@ -7,7 +7,7 @@ import { updateChapter } from '../services/writerApi.js';
 
 const AUTOSAVE_DELAY = 3000;
 
-export default function WriterChapterEditor({ chapter, onWordCountChange, fullscreen, onToggleFullscreen, aiPanelOpen, onToggleAiPanel }) {
+export default function WriterChapterEditor({ chapter, onWordCountChange, fullscreen, onToggleFullscreen, aiPanelOpen, onToggleAiPanel, onSelectionChange }) {
   const [title, setTitle] = useState(chapter.title);
   const [notes, setNotes] = useState(chapter.notes || '');
   const [showNotes, setShowNotes] = useState(false);
@@ -38,11 +38,9 @@ export default function WriterChapterEditor({ chapter, onWordCountChange, fullsc
     },
     onSelectionUpdate: ({ editor }) => {
       const { from, to } = editor.state.selection;
-      if (from !== to) {
-        setSelectedText(editor.state.doc.textBetween(from, to, ' '));
-      } else {
-        setSelectedText('');
-      }
+      const sel = from !== to ? editor.state.doc.textBetween(from, to, ' ').trim() : '';
+      setSelectedText(sel);
+      onSelectionChange?.(sel);
     },
   });
 

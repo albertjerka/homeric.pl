@@ -3883,3 +3883,95 @@ body::before {
   gap: 7px;
 }
 .ai-editor-note-icon { flex-shrink: 0; font-style: normal; }
+
+/* ─── AI panel — warianty sekcja tytuł ──────────────────────────────────────── */
+.ai-variants-section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-dim, #c9a227);
+  padding: 10px 12px 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Fragment wejściowy ────────────────────────────────────────────────────── */
+.ai-input-fragment {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ai-input-fragment-label {
+  font-size: 0.63rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+.ai-input-fragment-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ─── Brak zaznaczenia — prompt ─────────────────────────────────────────────── */
+.ai-no-selection-prompt {
+  margin: 12px;
+  padding: 16px;
+  background: rgba(201,162,39,0.06);
+  border: 1px solid rgba(201,162,39,0.2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  text-align: center;
+}
+.ai-no-selection-icon {
+  font-size: 1.4rem;
+  color: var(--text-muted);
+}
+.ai-no-selection-msg {
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.ai-no-selection-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.btn-ai-choice {
+  background: none;
+  border: 1px solid rgba(201,162,39,0.35);
+  border-radius: 5px;
+  color: var(--accent-dim, #c9a227);
+  font-size: 0.78rem;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn-ai-choice:hover { background: rgba(201,162,39,0.1); }
+.btn-ai-choice:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─── Context bar clear button ───────────────────────────────────────────────── */
+.ai-context-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+.ai-context-clear:hover { color: var(--text-primary); }
+
+/* ─── More-entries button ────────────────────────────────────────────────────── */
+.ai-dict-more-btn {
+  background: rgba(201,162,39,0.06) !important;
+  border-style: dashed !important;
+  font-style: italic;
+}

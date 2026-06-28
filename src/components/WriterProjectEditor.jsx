@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { getChapters, getChapter, getCharacters, getPlaces, exportProject, updateChapter } from '../services/writerApi.js';
 import WriterSidebar from './WriterSidebar.jsx';
 import WriterChapterEditor from './WriterChapterEditor.jsx';
@@ -13,10 +13,10 @@ export default function WriterProjectEditor({ project, onBack }) {
   const [activeChapter, setActiveChapter] = useState(null);
   const [rightPanel, setRightPanel] = useState('linde');
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
-  const [selectedText, setSelectedText] = useState('');
+  const [, setSelectedText] = useState('');
+  const [frozenSelection, setFrozenSelection] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const pollingRef = useRef(null);
 
   useEffect(() => {
     getChapters(project.id).then(chs => {
@@ -27,13 +27,10 @@ export default function WriterProjectEditor({ project, onBack }) {
     getPlaces(project.id).then(setPlaces);
   }, [project.id]);
 
-  useEffect(() => {
-    pollingRef.current = setInterval(() => {
-      const el = document.getElementById('__chapter-selected-text');
-      if (el) setSelectedText(el.value);
-    }, 500);
-    return () => clearInterval(pollingRef.current);
-  }, []);
+  function handleSelectionChange(sel) {
+    setSelectedText(sel);
+    if (sel.trim()) setFrozenSelection(sel);
+  }
 
   async function loadChapter(ch) {
     const full = await getChapter(ch.id);
@@ -133,6 +130,7 @@ export default function WriterProjectEditor({ project, onBack }) {
             onToggleFullscreen={() => setFullscreen(f => !f)}
             aiPanelOpen={aiPanelOpen}
             onToggleAiPanel={handleToggleAiPanel}
+            onSelectionChange={handleSelectionChange}
           />
         ) : (
           <div className="writer-no-chapter">
@@ -194,7 +192,8 @@ export default function WriterProjectEditor({ project, onBack }) {
               <button className="btn-ghost-sm" onClick={() => { setRightPanel('linde'); setAiPanelOpen(false); }}>✕</button>
             </div>
             <WriterAIPanel
-              selectedText={selectedText}
+              selectedText={frozenSelection}
+              liveSelection={selectedText}
               chapterText={activeChapter?.content_text || ''}
               projectId={project.id}
               chapterId={activeChapter?.id}

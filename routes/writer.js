@@ -584,12 +584,12 @@ router.post('/ai/dictionary-context', async (req, res) => {
 router.get('/chapters/:chapterId/ai-messages', async (req, res) => {
   const chapterId = parseInt(req.params.chapterId);
   const r = await pool.query(
-    `SELECT m.id, m.mode, m.prompt, m.input_text, m.output_text,
+    `SELECT m.id, m.mode, m.prompt, m.input_text, m.output_text, m.output_json,
             m.selected_text, m.linde_terms_json, m.scene_words_json, m.created_at
      FROM writer_ai_messages m
      JOIN writer_ai_sessions s ON s.id = m.session_id
      WHERE s.chapter_id = $1 AND m.role = 'assistant'
-     ORDER BY m.created_at DESC LIMIT 50`,
+     ORDER BY m.created_at ASC LIMIT 50`,
     [chapterId]
   );
   res.json(r.rows);
@@ -605,30 +605,33 @@ router.post('/ai/dictionary-context', async (req, res) => {
 
 // ─── Homer AI — główny endpoint ──────────────────────────────────────────────
 
-const HOMER_AI_SYSTEM = `Jesteś Homeric AI — literackim redaktorem, stylistą i pomocnikiem pisarza. Twoim zadaniem nie jest szybkie parafrazowanie, ale praca pisarska ze słownikiem, znaczeniem, rytmem i obrazem.
+const HOMER_AI_SYSTEM = `Jesteś Homeric AI — literackim redaktorem i stylistą pomagającym pisarzowi.
 
-ZASADA: Przy każdej pracy nad tekstem najpierw analizujesz słownictwo, a dopiero potem tworzysz warianty.
+TWOJE ZADANIE: Przeredaguj podany TEKST DO REDAKCJI i zwróć minimum 4 warianty literackie.
+Materiał słownikowy jest pomocą, nie celem sam w sobie — NIE kończ odpowiedzi na liście słów.
 
-ETAP 1 — ANALIZA SŁOWNIKOWA:
-Wydobywasz z tekstu słowa ważne (rzeczowniki, czasowniki, przymiotniki, obrazy, emocje) i ignorujesz słowa puste (spójniki, zaimki, przyimki). Dla każdego ważnego słowa szukasz w przekazanym materiale słownikowym (KONTEKST SŁOWNIKOWY): haseł, znaczeń, słów pochodnych, bliskoznacznych, archaicznych odpowiedników. Korzystasz z Lindego i dostępnych słowników.
+ZASADY STYLIZACJI:
+- Styl archaiczny = dawny rytm zdania, szlachetny szyk (orzeczenie na końcu), pojęcia moralne (cnota, powinność, dola, niedola, frasunek) i obrazowe (cień, blask, żar, mgła). Nie wklejaj losowych starych słów.
+- Inspiruj się XIX-wieczną prozą polską (Sienkiewicz, Kraszewski, Orzeszkowa, Prus), ale twórz tekst oryginalny.
+- Każdy wariant ma być KOMPLETNY — przeredagowane zdania lub akapit, nie lista słów.
 
-ETAP 2 — WARIANTY LITERACKIE:
-Tworzysz minimum 4 warianty. Styl archaiczny nie oznacza losowych starych słów — oznacza dawny rytm, szlachetniejszy szyk, pojęcia moralne (cnota, hańba, powinność, sumienie, dola, niedola) i obrazowe (cień, blask, pył, żar, mgła, świt). Inspirujesz się prozą XIX-wieczną (Sienkiewicz, Kraszewski, Orzeszkowa, Prus), ale tworzysz tekst oryginalny.
-
-FORMAT ODPOWIEDZI — zwróć WYŁĄCZNIE czysty JSON (bez nawiasów \`\`\`, bez tekstu przed lub po):
+OBOWIĄZKOWY FORMAT ODPOWIEDZI:
+Zwróć WYŁĄCZNIE obiekt JSON — bez nawiasów \`\`\`json, bez tekstu przed ani po.
+Pole "variants" MUSI zawierać minimum 4 obiekty z "label" i "text".
+Pusty "variants" = błąd krytyczny.
 
 {
   "dictionary_material": [
-    { "headword": "hasło z Linde", "source": "Linde Tom X", "meaning": "krótkie znaczenie do 150 znaków", "suggested_use": "przykład frazy z tym słowem" }
+    { "headword": "hasło", "source": "Linde Tom X", "meaning": "znaczenie do 120 znaków", "suggested_use": "przykładowa fraza" }
   ],
   "related_words": [
-    { "base": "słowo z tekstu", "words": ["bliskoznaczne1", "archaiczny_odpowiednik", "pochodne"] }
+    { "base": "słowo z tekstu", "words": ["bliskoznacznik", "archaiczny_odpowiednik"] }
   ],
   "variants": [
-    { "label": "Wersja poprawiona", "text": "..." },
-    { "label": "Wersja archaizująca", "text": "..." },
-    { "label": "Wersja ozdobna", "text": "..." },
-    { "label": "Wersja epicka", "text": "..." }
+    { "label": "Wersja poprawiona", "text": "TUTAJ PEŁNY PRZEREDAGOWANY TEKST" },
+    { "label": "Wersja archaizująca", "text": "TUTAJ PEŁNY PRZEREDAGOWANY TEKST" },
+    { "label": "Wersja ozdobna", "text": "TUTAJ PEŁNY PRZEREDAGOWANY TEKST" },
+    { "label": "Wersja epicka", "text": "TUTAJ PEŁNY PRZEREDAGOWANY TEKST" }
   ],
   "editor_note": "Co zmieniono i dlaczego — 1-3 zdania."
 }`;
@@ -680,33 +683,37 @@ router.post('/ai', async (req, res) => {
       ? await findDictionaryTermsForWriting(text, scene_words)
       : [];
 
-    // Kontekst słownikowy do promptu
-    const lindeContext = lindeTerms.length
-      ? 'KONTEKST SŁOWNIKOWY (Słownik Lindego — użyj jako materiału stylistycznego):\n' +
-        lindeTerms.map(t => `• ${t.headword} [${t.source}]: ${t.meaning}`).join('\n') +
-        '\n\n'
-      : '';
+    const modeExtra = MODE_EXTRA_PROMPT[effectiveMode] || MODE_EXTRA_PROMPT.custom;
 
-    // Kontekst historii (ostatnie 3 wymiany)
+    // Historia (ostatnie 3 pary)
     const histContext = history.slice(-6).length
       ? 'HISTORIA ROZMOWY:\n' +
-        history.slice(-6).map(h => `${h.role === 'user' ? 'PISARZ' : 'AI'}: ${String(h.content).slice(0, 350)}`).join('\n\n') +
+        history.slice(-6).map(h => `${h.role === 'user' ? 'PISARZ' : 'AI'}: ${String(h.content).slice(0, 300)}`).join('\n\n') +
         '\n\n'
       : '';
 
     const sceneContext = scene_words.length
-      ? `SŁOWA DO SCENY (obowiązkowo wpleć w warianty): ${scene_words.join(', ')}\n\n`
+      ? `SŁOWA DO SCENY (wpleć w warianty): ${scene_words.join(', ')}\n\n`
       : '';
 
-    const modeExtra = MODE_EXTRA_PROMPT[effectiveMode] || MODE_EXTRA_PROMPT.custom;
+    // Linde SKRÓCONY — max 20 haseł, po 100 znaków definicji każde
+    const lindeContext = lindeTerms.length
+      ? 'MATERIAŁ SŁOWNIKOWY (inspiracja stylistyczna, NIE cel główny):\n' +
+        lindeTerms.slice(0, 20).map(t => `• ${t.headword}: ${t.meaning.slice(0, 100)}`).join('\n') +
+        '\n\n'
+      : '';
 
+    // Tekst PIERWSZE — Claude skupia się na głównym zadaniu, nie na słowniku
     const userMessage = [
       histContext,
-      lindeContext,
-      sceneContext,
+      text.trim() ? `TEKST DO REDAKCJI:\n${text}\n\n` : '',
       `TRYB: ${effectiveMode}\n${modeExtra}\n\n`,
-      customInstruction.trim() ? `INSTRUKCJA PISARZA: ${customInstruction}\n\n` : '',
-      text.trim() ? `TEKST DO OPRACOWANIA:\n${text}\n\n` : '',
+      customInstruction.trim() ? `DODATKOWA INSTRUKCJA: ${customInstruction}\n\n` : '',
+      sceneContext,
+      lindeContext,
+      'WYMAGANIE KRYTYCZNE: pole "variants" musi zawierać minimum 4 przeredagowane wersje tekstu.\n' +
+      'Każda wersja to kompletne zdania/akapit — nie lista słów, nie streszczenie.\n' +
+      'Zwróć WYŁĄCZNIE czysty JSON.',
     ].join('').trim();
 
     const userContent = image_base64
@@ -718,13 +725,39 @@ router.post('/ai', async (req, res) => {
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 3500,
+      max_tokens: 4000,
       system: HOMER_AI_SYSTEM,
       messages: [{ role: 'user', content: userContent }],
     });
 
     const rawOutput = message.content[0].text;
-    const structured = parseAiResponse(rawOutput);
+    let structured = parseAiResponse(rawOutput);
+
+    // Walidacja: jeśli variants puste — drugie podejście z ostrzejszym promptem
+    if (!structured.variants?.length) {
+      const retry = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: HOMER_AI_SYSTEM,
+        messages: [{
+          role: 'user',
+          content: `UWAGA: poprzednia odpowiedź nie zawierała wariantów tekstu. To jest błąd krytyczny.\n\n` +
+            `Przeredaguj poniższy tekst i zwróć JSON z polem "variants" zawierającym DOKŁADNIE 4 obiekty:\n\n` +
+            `TEKST:\n${text}\n\n` +
+            `TRYB: ${effectiveMode}\n${modeExtra}\n\n` +
+            `JSON musi mieć format:\n{"dictionary_material":[],"related_words":[],"variants":[{"label":"Wersja poprawiona","text":"..."},{"label":"Wersja archaizująca","text":"..."},{"label":"Wersja ozdobna","text":"..."},{"label":"Wersja epicka","text":"..."}],"editor_note":"..."}`,
+        }],
+      }).catch(() => null);
+
+      if (retry) {
+        const retryStructured = parseAiResponse(retry.content[0].text);
+        if (retryStructured.variants?.length) structured = retryStructured;
+      }
+
+      if (!structured.variants?.length) {
+        return res.status(500).json({ error: 'AI nie zwróciło wariantów tekstu. Spróbuj ponownie lub zmień fragment.' });
+      }
+    }
 
     // Zapisz w bazie
     try {
@@ -739,14 +772,16 @@ router.post('/ai', async (req, res) => {
       }
       await pool.query(
         `INSERT INTO writer_ai_messages
-           (session_id, role, mode, prompt, input_text, output_text, selected_text, linde_terms_json, scene_words_json)
-         VALUES ($1,'assistant',$2,$3,$4,$5,$6,$7,$8)`,
+           (session_id, role, mode, prompt, input_text, output_text, output_json,
+            selected_text, linde_terms_json, scene_words_json)
+         VALUES ($1,'assistant',$2,$3,$4,$5,$6,$7,$8,$9)`,
         [
           sessionR.rows[0].id, effectiveMode,
           customInstruction.slice(0, 2000), text.slice(0, 2000),
           rawOutput.slice(0, 4000),
+          JSON.stringify(structured),
           (selected_text || '').slice(0, 1000),
-          JSON.stringify(lindeTerms.map(t => t.headword)),
+          JSON.stringify(lindeTerms.slice(0, 20).map(t => ({ headword: t.headword, source: t.source, meaning: t.meaning.slice(0, 120) }))),
           JSON.stringify(scene_words),
         ]
       );
@@ -758,7 +793,7 @@ router.post('/ai', async (req, res) => {
       [project_id||null, chapter_id||null, effectiveMode, text.slice(0,2000), rawOutput.slice(0,4000), image_base64||null, image_media_type||null]
     ).catch(() => {});
 
-    res.json({ structured, lindeTerms, mode: effectiveMode });
+    res.json({ structured, lindeTerms: lindeTerms.slice(0, 20), mode: effectiveMode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
